@@ -1,8 +1,19 @@
-name: nf-core-lehtio-quant-proteomics-1.0dev
+name: nf-core-dda-quant-proteomics-1.0dev
 channels:
   - bioconda
+  - bioconda-legacy
   - conda-forge
   - defaults
 dependencies:
-  - fastqc=0.11.7
-  - multiqc=1.6
+  - bioconda::hardklor=2.3.0
+  - bioconda::kronik=2.20
+  - bioconda::msstitch=2.8
+  - conda-forge::biopython=1.72
+  - bioconda::msgf_plus=2017.07.21
+  - bioconda::percolator=3.1
+  - conda-forge::lxml=4.2.5
+  - conda-forge::jinja2=2.10
+  - r::r-ggplot2=3.0.0
+  - bioconda-legacy::r-reshape2=1.4.3
+  - bioconda::r-knitr=1.20
+  - conda-forge::r-forcats=0.3.0
