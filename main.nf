@@ -80,12 +80,12 @@ tdb = file(params.tdb)
 if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
 // file templates
-hkconf = file('assets/hardklor.conf')
-qcknitrplatepsms = file('assets/knitr_psms_perplate.Rhtml')
-qcknitrnofrpsms = file('assets/knitr_psms_nofr.Rhtml')
-qcknitrpsms = file('assets/knitr_psms.Rhtml')
-qcknitrprot = file('assets/knitr_prot.Rhtml')
-qcknitrnormfac = file('assets/knitr_iso_norm.Rhtml')
+hkconf = file("$baseDir/assets/hardklor.conf")
+qcknitrplatepsms = file("$baseDir/assets/knitr_psms_perplate.Rhtml")
+qcknitrnofrpsms = file("$baseDir/assets/knitr_psms_nofr.Rhtml")
+qcknitrpsms = file("$baseDir/assets/knitr_psms.Rhtml")
+qcknitrprot = file("$baseDir/assets/knitr_prot.Rhtml")
+qcknitrnormfac = file("$baseDir/assets/knitr_iso_norm.Rhtml")
 
 if (params.martmap) {
   martmap = file(params.martmap)
