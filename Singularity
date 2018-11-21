@@ -2,7 +2,7 @@ From:nfcore/base
 Bootstrap:docker
 
 %labels
-    DESCRIPTION Singularity image containing all requirements for the nf-core/lehtio-quant-proteomics pipeline
+    DESCRIPTION Singularity image containing all requirements for the nf-core/dda-quant-proteomics pipeline
     VERSION 1.0dev
 
 %environment
