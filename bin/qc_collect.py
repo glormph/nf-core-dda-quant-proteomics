@@ -18,7 +18,7 @@ main = Template("""<!DOCTYPE html>
   <hr>
   <h3 class="title is-3">Protein/peptide level QC</h3>
 {% for graphtype in ["featyield", "precursorarea", "isobaric", "nrpsms", "nrpsmsoverlapping", "percentage_onepsm"] %}
-  {% if graphtype in features[features.keys()[0]] %}
+  {% if graphtype in features['peptides'] %}
   <h4 class="title is-4">{{ titles[graphtype] }}</h4>
   <div class="columns">
     {% for feat in features %}
@@ -27,10 +27,10 @@ main = Template("""<!DOCTYPE html>
       {{ features[feat][graphtype] }}
     </div>
     {% endfor %}
-    {% if graphtype == "isobaric" %}
+    {% if graphtype == "isobaric" and 'normfac' in features['proteins'] %}
     <div class="column">
       <h5 class="title is-5">Median centering</h5>
-        {{ norm }}
+        {{ features['proteins']['normfac']}}
     </div>
     {% endif %}
   </div>
@@ -56,6 +56,11 @@ main = Template("""<!DOCTYPE html>
     </div>
     {% endfor %}
   </div>
+  {% else %}
+    {% for graph in psms %}
+      <h5 class="title is-5">{{ titles[graph] }}</h5>
+      {{ psms[graph] }}
+    {% endfor %}
   {% endif %}
 </div>
 {% for graph in ppsms[firstplate] %}
@@ -78,27 +83,28 @@ main = Template("""<!DOCTYPE html>
 # PSMs
 # coverage if protein
 # venn diagrams
+
 ppsms = {}
 searchname = sys.argv[1]
 frac = sys.argv[2]
+plateids = sys.argv[3:] # FIXME  use this for ppsms!
+
+with open('psms.html') as fp:
+    psmsel = parse(fp).find('body').findall('div')
+
+psms = {x.attrib['id']: tostring(x, encoding='unicode') for x in psmsel if x.attrib['class'] == 'chunk'}
 if frac == 'hirief':
     fryield = 'Fraction yield'
-    for ppsm in sys.argv[3:]:
-        plate = os.path.basename(ppsm).replace('_psms.html', '')
-        with open(ppsm) as fp:
-            ppsms[plate] = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if x.attrib['class'] == 'chunk'}
-    
-    with open('psms.html') as fp:
-        psms = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if x.attrib['class'] == 'chunk'}
+    for plateid in plateids:
+        ppsms[plateid] = {x.attrib['id']: tostring(x, encoding='unicode') for x in psmsel if x.attrib['class'] == 'chunk {}'.format(plateid)}
 else:
     fryield = 'Yield'
-    psms = {}
-    with open('psms.html') as fp:
-        ppsms['No plate'] = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if x.attrib['class'] == 'chunk'}
-    
+    ppsms['No plate'] = {x.attrib['id']: tostring(x, encoding='unicode') for x in psmsel if x.attrib['class'] == 'chunk noplates'}
+
+print(psms)
 titles = {'psm-scans': '# PSMs and scans', 'miscleav': 'Missed cleavages',
-          'missing-tmt': 'Isobaric missing values', 'fr-yield': fryield,
-          'retentiontime': 'Retention time', 'prec-error': 'Precursor error',
+          'missing-tmt': 'Isobaric missing values', 'fryield': fryield,
+          'retentiontime': 'Retention time', 'precerror': 'Precursor error',
           'featyield': 'Identifications', 'isobaric': 'Isobaric intensities',
           'precursorarea': 'Precursor area intensity',
           'nrpsms': '# PSMs used for isobaric quantitation per identification',
@@ -115,15 +121,6 @@ for feat in ['peptides', 'proteins', 'genes', 'assoc']:
             graphs[feat] = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if x.attrib['class'] == 'chunk'}
     except IOError as e:
         print(feat, e)
-try:
-    with open('norm.html') as fp:
-        normgraph = [tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if x.attrib['class'] == 'chunk'][0]
-except IOError:
-    print('No normalization file')
-    normgraph = False
-except AssertionError:
-    print('Normalization file not XML, assuming no normalizing done')
-    normgraph = False
 
 with open('qc.html', 'w') as fp:
-    fp.write(main.render(hirief=frac, searchname=searchname, titles=titles, featnames=featnames, psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, norm=normgraph))
+    fp.write(main.render(hirief=frac, searchname=searchname, titles=titles, featnames=featnames, psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs))

@@ -16,5 +16,4 @@ dependencies:
   - conda-forge::jinja2=2.10
   - r::r-ggplot2=3.0.0
   - bioconda-legacy::r-reshape2=1.4.3
-  - bioconda::r-knitr=1.20
   - conda-forge::r-forcats=0.3.0

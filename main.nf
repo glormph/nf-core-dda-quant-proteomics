@@ -81,11 +81,6 @@ if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
 // file templates
 hkconf = file("$baseDir/assets/hardklor.conf")
-qcknitrplatepsms = file("$baseDir/assets/knitr_psms_perplate.Rhtml")
-qcknitrnofrpsms = file("$baseDir/assets/knitr_psms_nofr.Rhtml")
-qcknitrpsms = file("$baseDir/assets/knitr_psms.Rhtml")
-qcknitrprot = file("$baseDir/assets/knitr_prot.Rhtml")
-qcknitrnormfac = file("$baseDir/assets/knitr_iso_norm.Rhtml")
 
 if (params.martmap) {
   martmap = file(params.martmap)
@@ -816,37 +811,26 @@ process psmQC {
   set val(td), file('psms'), file('scans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
   output:
-  set val('psms'), file('knitr.html') into psmqccollect
-  file('*_psms.html') optional true into platepsmscoll
+  set val('psms'), file('psmqc.html') into psmqccollect
+  val(plates) into qcplates
   // TODO no proteins == no coverage for pep centric
   script:
-  if (params.hirief)
   """
-  #!/usr/bin/env Rscript
-  library(ggplot2)
-  library(reshape2)
-  library(knitr)
-  feats = read.table("psms", header=T, sep="\\t", comment.char = "", quote = "")
-  feats\$plateID = paste(feats\$Biological.set, feats\$Strip, sep='_')
-  nrsets=${setnames[0].size()}
-  amount_ms2 = read.table("scans")
-  knitr::knit2html("$qcknitrpsms", output="knitr.html")
-  for (plateid in c(${plates.collect() {"\"${it}\"" }.join(',') })) {
-    knitr::knit2html("$qcknitrplatepsms", output=paste(plateid, "psms.html", sep="_"))
-  }
-  file.remove('knitr_psms.html')
-  """
-  else
-  """
-  #!/usr/bin/env Rscript
-  library(ggplot2)
-  library(reshape2)
-  library(knitr)
-  nrsets=${setnames[0].size()}
-  feats = read.table("psms", header=T, sep="\\t", comment.char = "", quote = "")
-  amount_ms2 = read.table("scans", sep="|", header=F)
-  knitr::knit2html("$qcknitrnofrpsms", output="knitr.html")
-  file.remove('knitr_psms.html')
+  qc_psms.R ${setnames[0].size()} ${params.hirief ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
+  echo "<html><body>" > psmqc.html
+  for graph in psm-scans missing-tmt miscleav
+    do
+    [[ -e \$graph ]] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> psmqc.html
+    done 
+  for graph in retentiontime precerror fryield
+    do
+    for plateid in ${plates.join(' ')}
+      do
+      plate="PLATE___\${plateid}___\${graph}"
+      [[ -e \$plate ]] && paste -d \\\\0  <(echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$plate) <(echo '"></div>') >> psmqc.html
+      done 
+    done
+  echo "</body></html>" >> psmqc.html
   """
 }
 
@@ -879,22 +863,18 @@ process featQC {
   set val(acctype), file('feats'), val(setnames) from featqcinput
   file('normtable') from normtable
   output:
-  set val(acctype), file('knitr.html') into qccollect
-  file('normalizefactors.html') optional true into normhtml
+  set val(acctype), file('featqc.html') into qccollect
 
   script:
   """
-  #!/usr/bin/env Rscript
-  library(ggplot2)
-  library(forcats)
-  library(reshape2)
-  library(knitr)
-  nrsets=${setnames.size()}
-  feats = read.table("feats", header=T, sep="\\t", comment.char = "", quote = "")
-  feattype="$acctype"
-  knitr::knit2html("$qcknitrprot", output="knitr.html")
-  ${normalize ? 'normtable="normtable"' : ''}
-  ${normalize ? "knitr::knit2html(\"$qcknitrnormfac\", output=\"normalizefactors.html\")": ''}
+  qc_protein.R ${setnames.size()} ${acctype} ${normalize ? 'normtable' : ''}
+  echo "<html><body>" > featqc.html
+  for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm normfac;
+    do
+    echo \$graph
+    [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
+    done 
+  echo "</body></html>" >> featqc.html
   """
 }
 
@@ -904,31 +884,22 @@ qccollect
   .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }] }
   .set { collected_feats_qc }
 
-if (!params.hirief) {
-  Channel.from([1]).set { platepsmscoll }
-}
+
 process collectQC {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
   set val(acctypes), file('feat?') from collected_feats_qc
-  file('norm.html') from normhtml
-  file(ppsms) from platepsmscoll
+  val(plates) from qcplates
 
   output:
   file('qc.html')
 
   script:
-  if (params.hirief)
   """
   count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; ((count++)); done
-  qc_collect.py $params.name hirief ${ppsms.join(' ')}
-  """
-  else
-  """
-  count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; ((count++)); done
-  qc_collect.py $params.name nofrac
+  qc_collect.py $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
   """
 }
 
