@@ -208,7 +208,6 @@ if (params.mzmlPaths) {
   // Profile 'test' delivers mzmlPaths
   Channel
     .from(params.mzmlPaths)
-    .view()
     .set { mzml_in }
 }
 else if (!params.mzmldef) {
@@ -226,7 +225,6 @@ else if (!params.mzmldef) {
 mzml_in
   .tap { sets }
   .map { it -> [file(it[0]), it[1], it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]} // create file, set plate to setname, and fraction to NA if there is none
-    .view()
   .tap { strips }
   .map { it -> [it[1], it[0].baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), it[0], it[2], it[3]] }
   .tap{ mzmlfiles; mzml_isobaric; mzml_hklor; mzml_msgf }
@@ -247,62 +245,6 @@ strips
   .toList()
   .set { strips_for_deltapi }
 
-process IsobaricQuant {
-
-  when: !params.noquant && params.isobaric && !params.quantlookup
-
-  input:
-  set val(setname), val(sample), file(infile), val(platename), val(fraction)from mzml_isobaric
-
-  output:
-  set val(sample), file("${infile}.consensusXML") into isobaricxml
-
-  """
-  source activate openms-2.4.0
-  IsobaricAnalyzer  -type $params.isobaric -in $infile -out "${infile}.consensusXML" -extraction:select_activation "$activationtype" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true 
-  """
-}
-
-
-process hardklor {
-  when: !params.quantlookup && !params.noquant
-
-  input:
-  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_hklor
-  file hkconf
-
-  output:
-  set val(sample), file('hardklor.out'), file(infile) into hk_out
-
-  """
-  cp $hkconf config
-  echo "$infile" hardklor.out >> config
-  hardklor config
-  """
-}
-
-
-process kronik {
-  when: !params.quantlookup && !params.noquant
-
-  input:
-  set val(sample), file('hardklor.out'), file(mzml) from hk_out 
-
-  output:
-  set val(sample), file("${sample}.kr"), file(mzml) into kronik_out
-
-  """
-  kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
-  """
-}
-
-
-mzmlfiles
-  .buffer(size: amount_mzml.value)
-  .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[3] } ] } // lists: [sets], [mzmlfiles], [plates]
-  .into { mzmlfiles_all; mzmlfiles_all_count }
-
 
 if (params.speclookup && !params.quantlookup) {
   Channel
@@ -314,6 +256,35 @@ if (!params.speclookup && params.quantlookup) {
     .fromPath(params.quantlookup)
     .into { spec_lookup; quant_lookup; countlookup }
 } 
+
+
+process hardklor_kronik {
+  when: !params.quantlookup && !params.noquant
+
+  input:
+  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_hklor
+  file hkconf
+
+  output:
+  set val(sample), file("${sample}.kr"), file(infile) into kronik_out
+  set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
+
+  """
+  cp $hkconf config
+  echo "$infile" hardklor.out >> config
+  hardklor config
+  kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
+  source activate openms-2.4.0
+  ${params.isobaric ? "IsobaricAnalyzer  -type $params.isobaric -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  """
+}
+
+
+mzmlfiles
+  .buffer(size: amount_mzml.value)
+  .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
+  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[3] } ] } // lists: [sets], [mzmlfiles], [plates]
+  .into { mzmlfiles_all; mzmlfiles_all_count }
 
 
 process createSpectraLookup {
@@ -361,6 +332,8 @@ process quantLookup {
 
   when: !params.quantlookup && !params.noquant
 
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: 'quant_lookup.sql'
+
   input:
   file lookup from spec_lookup
   set val(isosamples), file(isofns) from isofiles_sets
@@ -386,7 +359,7 @@ process quantLookup {
 
 if (!params.quantlookup && !params.noquant) {
   newquantlookup
-    .into { quant_lookup }
+    .set { quant_lookup }
 } 
 
 mzmlfiles_all_count
@@ -598,109 +571,55 @@ process psm2Peptides {
   set val(td), file('psms'), val(setname) from psm_pep
   
   output:
-  set val(td), val(setname), file('psms'), file('peptides') into prepep
-  """
-  msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
-  """
-}
-
-
-process shuffleHeaderPeptidesMakeProttables {
- 
-  input:
-  set val(td), val(setname), file(psms), file('peptides') from prepep
-
-  output:
-  set val(setname), val(td), file(psms), file('peptide_table.txt') into peptides
+  set val(setname), val(td), file("${setname}_linmod"), file('proteinratios') into pepslinmod
+  set val(setname), val('peptides'), val(td), file("${setname}_linmod") into peptides_out
+  set val(setname), file('normratiosused') optional true into normratios
   set val(setname), val(td), file(psms), file('proteins'), val('proteins') into proteins
   set val(setname), val(td), file(psms), file('genes'), val('genes') into genes
   set val(setname), val(td), file(psms), file('symbols'), val('assoc') into symbols
+  set val(setname), file('proteinratios') optional true into proteinratios
 
-  // protein, gene and symbol table are outputted regardless of necessity
   script:
   col = accolmap.peptides + 1  // psm2pep adds a column
   """
+  msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
   echo Protein accession |tee proteins genes symbols
   tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> proteins
   tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> genes
   tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> symbols
-  """
-}
-
-proteins
-  .tap { proteins_pre }
-  .filter { it[1] == 'target' }
-  .set { tprot_norm }
-
-process ratioNormalizeProteins {
-
-  when: normalize
-
-  input:
-  set val(setname), val(td), file('psms'), file('proteins'), val(acctype) from tprot_norm
-  output:
-  set val(setname), file('proteinratios') into proteinratios
-  """
-  msspsmtable isoratio -i psms -o proteinratios --protcol ${accolmap.proteins} --targettable proteins --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}
-  """
-}
-
-tpep = Channel.create()
-dpep = Channel.create()
-peptides.choice(tpep, dpep) { it -> it[1] == 'target' ? 0 : 1}
-
-if (normalize) {
-  tpep
-    .join(proteinratios)
-    .concat(dpep)
-    .set { peptable_quant }
-} else {
-  tpep
-    .concat(dpep)
-    .set { peptable_quant }
-}
-
-process postprodPeptideTable {
-
-  input:
-  set val(setname), val(td), file('psms'), file('peptides'), file(pratios) from peptable_quant
-
-  output:
-  set val(setname), val(td), file("${setname}_linmod"), file(pratios) into pepslinmod
-  set val(setname), val('peptides'), val(td), file("${setname}_linmod") into peptides_out
-  set val(setname), file('normratiosused') optional true into normratios
-
-  script:
-  if (!params.noquant && params.isobaric && td=='target')
-  """
-  msspsmtable isoratio -i psms -o pepisoquant --targettable peptides --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? "--normalize median --norm-ratios $pratios" : ''} > normratiosused
-  mv pepisoquant peptide_table.txt
-  msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
-  """
-  else
-  """
-  mv peptides peptide_table.txt
+  ${normalize && td == 'target' ? "msspsmtable isoratio -i psms -o proteinratios --protcol ${accolmap.proteins} --targettable proteins --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : 'touch proteinratios'}
+  ${!params.noquant && params.isobaric && td == 'target' ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
+  ${!params.noquant && params.isobaric && td == 'target' ?  "mv pepisoquant peptide_table.txt" : ''}
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
   """
 }
 
 
 if (params.genes && params.symbols) { 
-  pepslinmod.tap { pepsg; pepss }.concat(pepsg, pepss).set { pepslinmod_prot }
-  proteins_pre.concat(genes).concat(symbols).set { pgstables } 
+  pepslinmod
+    .tap { pepsg; pepss }
+    .concat(pepsg, pepss)
+    .set { pepslinmod_prot }
+  proteins
+    .concat(genes, symbols)
+    .join(pepslinmod_prot, by: [0,1])
+    .set { prepgs_in }
 } else if (params.genes) { 
-  pepslinmod.tap { pepsg }.concat(pepsg).set { pepslinmod_prot }
-  proteins_pre.concat(genes).set { pgstables } 
+  pepslinmod
+    .tap { pepsg }
+    .concat(pepsg)
+    .set { pepslinmod_prot }
+  proteins
+    .concat(genes)
+    .join(pepslinmod_prot, by: [0,1])
+    .set { prepgs_in }
 } else { 
-  pepslinmod.set { pepslinmod_prot }
-  proteins_pre.set { pgstables }
+  proteins
+    .join(pepslinmod, by: [0,1])
+    .set { prepgs_in }
 }
 
-
-pgstables
-  .join(pepslinmod_prot, by: [0,1])
-  .set { prepgs_in }
 
 process prepProteinGeneSymbolTable {
 
@@ -716,7 +635,7 @@ process prepProteinGeneSymbolTable {
   if (!params.noquant && params.isobaric && td == 'target')
   """
   mssprottable ms1quant -i proteins -o protms1 --psmtable psms --protcol ${accolmap[acctype]}
-  msspsmtable isoratio -i psms -o proteintable --protcol ${accolmap[acctype]} --targettable protms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--norm-ratios pratios --normalize median': ''}
+  msspsmtable isoratio -i psms -o proteintable --protcol ${accolmap[acctype]} --targettable protms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize && td == 'target' ? '--norm-ratios pratios --normalize median': ''}
   mssprottable bestpeptide -i proteintable -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
   """
   else
@@ -806,7 +725,6 @@ psm_result
 
 
 process psmQC {
-  
   input:
   set val(td), file('psms'), file('scans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
@@ -844,29 +762,17 @@ normratios
   .set{ allsetnormratios }
 
 
-process normRatioParse {
-
-  input:
-  set val(setnames), file('norm?') from allsetnormratios
-
-  output:
-  file('normtable_sets') into normtable
-  """
-  count=1;for setn in ${setnames.join(' ')}; do echo "" >> norm"\$count" ; tail -n+2 norm"\$count" | sed \$'s/ - /\t'"\$setn"\$'\t/'; ((count++)); done >> normtable_sets
-  """
-}
-
-
 process featQC {
 
   input:
   set val(acctype), file('feats'), val(setnames) from featqcinput
-  file('normtable') from normtable
+  set val(setnames), file('norm?') from allsetnormratios
   output:
   set val(acctype), file('featqc.html') into qccollect
 
   script:
   """
+  ${normalize ? "count=1;for setn in ${setnames.join(' ')}; do echo '' >> norm\${count} ; tail -n+2 norm\${count} | sed \$'s/ - /\t'\${setn}\$'\t/'; ((count++)); done >> normtable" : ''}
   qc_protein.R ${setnames.size()} ${acctype} ${normalize ? 'normtable' : ''}
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm normfac;
