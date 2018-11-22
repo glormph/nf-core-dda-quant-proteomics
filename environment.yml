@@ -14,6 +14,7 @@ dependencies:
   - conda-forge::lxml=4.2.5
   - conda-forge::fontconfig=2.13.1
   - conda-forge::jinja2=2.10
-  - r::r-ggplot2=3.0.0
-  - bioconda-legacy::r-reshape2=1.4.2
+  - conda-forge::r-ggplot2=3.0.0
+  - conda-forge::r-reshape2=1.4.2
   - conda-forge::r-forcats=0.3.0
+  - conda-forge::r-rmarkdown=1.10
