@@ -1,4 +1,4 @@
-name: nf-core-dda-quant-proteomics-1.0dev
+name: nf-core-ddamsproteomics-1.0dev
 channels:
   - bioconda
   - bioconda-legacy

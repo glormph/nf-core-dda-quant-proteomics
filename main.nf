@@ -1,11 +1,11 @@
 #!/usr/bin/env nextflow
 /*
 ========================================================================================
-                         nf-core/dda-quant-proteomics
+                         nf-core/ddamsproteomics
 ========================================================================================
- nf-core/dda-quant-proteomics Analysis Pipeline.
+ nf-core/ddamsproteomics Analysis Pipeline.
  #### Homepage / Documentation
- https://github.com/nf-core/dda-quant-proteomics
+ https://github.com/nf-core/ddamsproteomics
 ----------------------------------------------------------------------------------------
 */
 
@@ -13,13 +13,13 @@
 def helpMessage() {
     log.info"""
     =========================================
-     nf-core/dda-quant-proteomics v${workflow.manifest.version}
+     nf-core/ddamsproteomics v${workflow.manifest.version}
     =========================================
     Usage:
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run nf-core/dda-quant-proteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
+    nextflow run nf-core/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
 
     Mandatory arguments:
       --mzmls                       Path to mzML files
@@ -159,10 +159,10 @@ log.info """=======================================================
     | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
                                           `._,._,\'
 
-nf-core/dda-quant-proteomics v${workflow.manifest.version}"
+nf-core/ddamsproteomics v${workflow.manifest.version}"
 ======================================================="""
 def summary = [:]
-summary['Pipeline Name']  = 'nf-core/dda-quant-proteomics'
+summary['Pipeline Name']  = 'nf-core/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
@@ -208,10 +208,10 @@ def create_workflow_summary(summary) {
 
     def yaml_file = workDir.resolve('workflow_summary_mqc.yaml')
     yaml_file.text  = """
-    id: 'nf-core-dda-quant-proteomics-summary'
+    id: 'nf-core-ddamsproteomics-summary'
     description: " - this information is collected when the pipeline is started."
-    section_name: 'nf-core/dda-quant-proteomics Workflow Summary'
-    section_href: 'https://github.com/nf-core/dda-quant-proteomics'
+    section_name: 'nf-core/ddamsproteomics Workflow Summary'
+    section_href: 'https://github.com/nf-core/ddamsproteomics'
     plot_type: 'html'
     data: |
         <dl class=\"dl-horizontal\">
@@ -865,9 +865,9 @@ process output_documentation {
 workflow.onComplete {
 
     // Set up the e-mail variables
-    def subject = "[nf-core/dda-quant-proteomics] Successful: $workflow.runName"
+    def subject = "[nf-core/ddamsproteomics] Successful: $workflow.runName"
     if(!workflow.success){
-      subject = "[nf-core/dda-quant-proteomics] FAILED: $workflow.runName"
+      subject = "[nf-core/ddamsproteomics] FAILED: $workflow.runName"
     }
     def email_fields = [:]
     email_fields['version'] = workflow.manifest.version
@@ -915,11 +915,11 @@ workflow.onComplete {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
           // Try to send HTML e-mail using sendmail
           [ 'sendmail', '-t' ].execute() << sendmail_html
-          log.info "[nf-core/dda-quant-proteomics] Sent summary e-mail to $params.email (sendmail)"
+          log.info "[nf-core/ddamsproteomics] Sent summary e-mail to $params.email (sendmail)"
         } catch (all) {
           // Catch failures and try with plaintext
           [ 'mail', '-s', subject, params.email ].execute() << email_txt
-          log.info "[nf-core/dda-quant-proteomics] Sent summary e-mail to $params.email (mail)"
+          log.info "[nf-core/ddamsproteomics] Sent summary e-mail to $params.email (mail)"
         }
     }
 
@@ -933,6 +933,6 @@ workflow.onComplete {
     def output_tf = new File( output_d, "pipeline_report.txt" )
     output_tf.withWriter { w -> w << email_txt }
 
-    log.info "[nf-core/dda-quant-proteomics] Pipeline Complete"
+    log.info "[nf-core/ddamsproteomics] Pipeline Complete"
 
 }

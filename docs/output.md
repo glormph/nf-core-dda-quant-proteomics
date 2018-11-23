@@ -1,4 +1,4 @@
-# nf-core/dda-quant-proteomics: Output
+# nf-core/ddamsproteomics: Output
 
 This document describes the output produced by the pipeline. 
 
