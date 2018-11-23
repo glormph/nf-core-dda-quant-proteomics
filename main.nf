@@ -19,19 +19,39 @@ def helpMessage() {
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run nf-core/dda-quant-proteomics --reads '*_R{1,2}.fastq.gz' -profile standard,docker
+    nextflow run nf-core/dda-quant-proteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
 
     Mandatory arguments:
-      --reads                       Path to input data (must be surrounded with quotes)
-      --genome                      Name of iGenomes reference
+      --mzmls                       Path to mzML files
+      --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
+                                    with sample set and fractionation annotation (see docs)
+      --tdb                         Path to target FASTA protein database
+      --mods                        Path to MSGF+ modification file (two examples in assets folder)
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
     Options:
-      --singleEnd                   Specifies that the input is single end reads
+      --isobaric VALUE              In case of isobaric, specify: tmt10plex, tmt6plex, itraq8plex, itraq4plex
+      --activation VALUE            Specify activation protocol: hcd (DEFAULT), cid, etd for isobaric 
+                                    quantification. Not necessary for other functionality.
+      --normalize                   Normalize isobaric values by median centering on channels of protein table
+      --genes                       Produce gene table (i.e. ENSG or gene names from Swissprot)
+      --symbols                     Produce gene symbols table (i.e. gene names when using ENSEMBL DB)
+      --martmap FILE                Necessary when using ENSEMBL FASTA database, tab-separated file 
+                                    with information from Biomart (see docs)
+      --fractions                   Fractionated samples, 
+      --hirief                      IEF fractionated samples, implies --fractions, allows delta pI calculation
+      --pipep FILE                  File containing peptide sequences and their isoelectric points
+      --onlypeptides                Do not produce protein or gene level data
+      --noquant                     Do not produce isobaric or MS1 quantification data
+      --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
+                                    quantification data when e.g. re-running. Need to match exactly to the
+                                    mzML files of the current run
+      --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
+                                    --genefield
+      --genefield VALUE             Number to determine in which field of the FASTA header (split 
+                                    by --fastadelim) the gene name can be found.
 
-    References                      If not specified in the configuration file or you wish to overwrite any of the references.
-      --fasta                       Path to Fasta reference
 
     Other options:
       --outdir                      The output directory where the results will be saved
@@ -147,9 +167,20 @@ summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
-
-// Validate and set file inputs
-params.fractions = params.hirief || params.fractions ? true : false
+summary['Modifications'] = params.mods
+summary['Isobaric tags'] = params.isobaric
+summary['Isobaric activation'] = params.activation
+summary['Isobaric median normalization'] = params.normalize
+summary['Output genes'] = params.genes
+summary['Output symbols'] = params.symbols
+summary['Custom FASTA delimiter'] = params.fastadelim 
+summary['Custom FASTA gene field'] = params.genefield
+summary['Premade quant data SQLite'] = params.quantlookup
+summary['Fractionated sample'] = fractionation
+summary['HiRIEF'] = params.hirief 
+summary['peptide pI data'] = params.pipep
+summary['Only output peptides'] = params.onlypeptides
+summary['Do not quantify'] = params.noquant
 summary['Max Memory']   = params.max_memory
 summary['Max CPUs']     = params.max_cpus
 summary['Max Time']     = params.max_time
