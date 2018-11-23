@@ -67,13 +67,15 @@ params.genes = false
 params.symbols = false
 params.fastadelim = false
 params.genefield = false
-params.speclookup = false
 params.quantlookup = false
+params.fractions = false
 params.hirief = false
+params.pipep = false
 params.onlypeptides = false
 params.noquant = false
 
 // Validate and set file inputs
+params.fractions = params.hirief || params.fractions ? true : false
 mods = file(params.mods)
 if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
 tdb = file(params.tdb)
@@ -143,9 +145,11 @@ def summary = [:]
 summary['Pipeline Name']  = 'nf-core/dda-quant-proteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
-summary['mzMLs']        = params.reads
+summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
-summary['Modifications']= params.mods
+
+// Validate and set file inputs
+params.fractions = params.hirief || params.fractions ? true : false
 summary['Max Memory']   = params.max_memory
 summary['Max CPUs']     = params.max_cpus
 summary['Max Time']     = params.max_time
@@ -246,18 +250,6 @@ strips
   .set { strips_for_deltapi }
 
 
-if (params.speclookup && !params.quantlookup) {
-  Channel
-    .fromPath(params.speclookup)
-    .into{ spec_lookup; countlookup }
-} 
-if (!params.speclookup && params.quantlookup) {
-  Channel
-    .fromPath(params.quantlookup)
-    .into { spec_lookup; quant_lookup; countlookup }
-} 
-
-
 process hardklor_kronik {
   when: !params.quantlookup && !params.noquant
 
@@ -289,7 +281,7 @@ mzmlfiles
 
 process createSpectraLookup {
 
-  when: !(params.speclookup || params.quantlookup)
+  when: !params.quantlookup
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames) from mzmlfiles_all
@@ -320,13 +312,18 @@ kronik_out
   .set { krfiles_sets }
 
 
-if (params.noquant && !(params.speclookup || params.quantlookup)) {
+if (params.noquant && !params.quantlookup) {
   newspeclookup
     .into { quant_lookup; spec_lookup; countlookup }
-} else if (!(params.speclookup || params.quantlookup)) {
+} else if (!params.quantlookup) {
   newspeclookup
     .into { spec_lookup; countlookup }
-}
+} else {
+  Channel
+    .fromPath(params.quantlookup)
+    .into { quant_lookup; countlookup }
+} 
+
 
 process quantLookup {
 
@@ -382,7 +379,7 @@ process countMS2perFile {
 }
 
 
-if (params.hirief) {
+if (params.fractions) {
   specfilems2.set { scans_platecount }
 } else {
   specfilems2
@@ -394,7 +391,7 @@ if (params.hirief) {
 process countMS2sPerPlate {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true 
-  when: params.hirief
+  when: params.fractions
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
@@ -419,7 +416,7 @@ process countMS2sPerPlate {
   """
 }
 
-if (params.hirief) {
+if (params.fractions) {
   scans_perplate.set { scans_result }
 }
 
