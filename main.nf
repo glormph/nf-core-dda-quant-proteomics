@@ -95,7 +95,7 @@ params.onlypeptides = false
 params.noquant = false
 
 // Validate and set file inputs
-params.fractions = params.hirief || params.fractions ? true : false
+fractionation = params.hirief || params.fractions ? true : false
 mods = file(params.mods)
 if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
 tdb = file(params.tdb)
@@ -410,7 +410,7 @@ process countMS2perFile {
 }
 
 
-if (params.fractions) {
+if (fractionation) { 
   specfilems2.set { scans_platecount }
 } else {
   specfilems2
@@ -422,7 +422,7 @@ if (params.fractions) {
 process countMS2sPerPlate {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true 
-  when: params.fractions
+  when: fractionation
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
@@ -447,7 +447,7 @@ process countMS2sPerPlate {
   """
 }
 
-if (params.fractions) {
+if (fractionation) {
   scans_perplate.set { scans_result }
 }
 
@@ -762,7 +762,7 @@ process psmQC {
   // TODO no proteins == no coverage for pep centric
   script:
   """
-  qc_psms.R ${setnames[0].size()} ${params.hirief ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
+  qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
