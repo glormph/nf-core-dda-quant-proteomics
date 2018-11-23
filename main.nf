@@ -38,10 +38,12 @@ def helpMessage() {
       --genes                       Produce gene table (i.e. ENSG or gene names from Swissprot)
       --symbols                     Produce gene symbols table (i.e. gene names when using ENSEMBL DB)
       --martmap FILE                Necessary when using ENSEMBL FASTA database, tab-separated file 
-                                    with information from Biomart (see docs)
+                                    with information from Biomart. An example can be found at
+                                    https://github.com/nf-core/test-datasets/raw/ddamsproteomics/testdata/
       --fractions                   Fractionated samples, 
       --hirief                      IEF fractionated samples, implies --fractions, allows delta pI calculation
-      --pipep FILE                  File containing peptide sequences and their isoelectric points
+      --pipep FILE                  File containing peptide sequences and their isoelectric points. Example
+                                    can be found in https://github.com/nf-core/test-datasets/raw/ddamsproteomics/
       --onlypeptides                Do not produce protein or gene level data
       --noquant                     Do not produce isobaric or MS1 quantification data
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -79,6 +81,7 @@ params.name = false
 params.email = false
 params.plaintext_email = false
 
+params.martmap = false
 params.isobaric = false
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
@@ -360,7 +363,7 @@ process quantLookup {
 
   when: !params.quantlookup && !params.noquant
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: 'quant_lookup.sql'
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'db.sqlite' ? 'quant_lookup.sql' : null }
 
   input:
   file lookup from spec_lookup
