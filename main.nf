@@ -1,11 +1,11 @@
 #!/usr/bin/env nextflow
 /*
 ========================================================================================
-                         nf-core/dda-quant-proteomics
+                         nf-core/ddamsproteomics
 ========================================================================================
- nf-core/dda-quant-proteomics Analysis Pipeline.
+ nf-core/ddamsproteomics Analysis Pipeline.
  #### Homepage / Documentation
- https://github.com/nf-core/dda-quant-proteomics
+ https://github.com/nf-core/ddamsproteomics
 ----------------------------------------------------------------------------------------
 */
 
@@ -13,25 +13,47 @@
 def helpMessage() {
     log.info"""
     =========================================
-     nf-core/dda-quant-proteomics v${workflow.manifest.version}
+     nf-core/ddamsproteomics v${workflow.manifest.version}
     =========================================
     Usage:
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run nf-core/dda-quant-proteomics --reads '*_R{1,2}.fastq.gz' -profile standard,docker
+    nextflow run nf-core/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
 
     Mandatory arguments:
-      --reads                       Path to input data (must be surrounded with quotes)
-      --genome                      Name of iGenomes reference
+      --mzmls                       Path to mzML files
+      --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
+                                    with sample set and fractionation annotation (see docs)
+      --tdb                         Path to target FASTA protein database
+      --mods                        Path to MSGF+ modification file (two examples in assets folder)
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
     Options:
-      --singleEnd                   Specifies that the input is single end reads
+      --isobaric VALUE              In case of isobaric, specify: tmt10plex, tmt6plex, itraq8plex, itraq4plex
+      --activation VALUE            Specify activation protocol: hcd (DEFAULT), cid, etd for isobaric 
+                                    quantification. Not necessary for other functionality.
+      --normalize                   Normalize isobaric values by median centering on channels of protein table
+      --genes                       Produce gene table (i.e. ENSG or gene names from Swissprot)
+      --symbols                     Produce gene symbols table (i.e. gene names when using ENSEMBL DB)
+      --martmap FILE                Necessary when using ENSEMBL FASTA database, tab-separated file 
+                                    with information from Biomart. An example can be found at
+                                    https://github.com/nf-core/test-datasets/raw/ddamsproteomics/testdata/
+      --fractions                   Fractionated samples, 
+      --hirief                      IEF fractionated samples, implies --fractions, allows delta pI calculation
+      --pipep FILE                  File containing peptide sequences and their isoelectric points. Example
+                                    can be found in https://github.com/nf-core/test-datasets/raw/ddamsproteomics/
+      --onlypeptides                Do not produce protein or gene level data
+      --noquant                     Do not produce isobaric or MS1 quantification data
+      --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
+                                    quantification data when e.g. re-running. Need to match exactly to the
+                                    mzML files of the current run
+      --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
+                                    --genefield
+      --genefield VALUE             Number to determine in which field of the FASTA header (split 
+                                    by --fastadelim) the gene name can be found.
 
-    References                      If not specified in the configuration file or you wish to overwrite any of the references.
-      --fasta                       Path to Fasta reference
 
     Other options:
       --outdir                      The output directory where the results will be saved
@@ -59,6 +81,7 @@ params.name = false
 params.email = false
 params.plaintext_email = false
 
+params.martmap = false
 params.isobaric = false
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
@@ -67,13 +90,15 @@ params.genes = false
 params.symbols = false
 params.fastadelim = false
 params.genefield = false
-params.speclookup = false
 params.quantlookup = false
+params.fractions = false
 params.hirief = false
+params.pipep = false
 params.onlypeptides = false
 params.noquant = false
 
 // Validate and set file inputs
+fractionation = params.hirief || params.fractions ? true : false
 mods = file(params.mods)
 if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
 tdb = file(params.tdb)
@@ -137,15 +162,28 @@ log.info """=======================================================
     | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
                                           `._,._,\'
 
-nf-core/dda-quant-proteomics v${workflow.manifest.version}"
+nf-core/ddamsproteomics v${workflow.manifest.version}"
 ======================================================="""
 def summary = [:]
-summary['Pipeline Name']  = 'nf-core/dda-quant-proteomics'
+summary['Pipeline Name']  = 'nf-core/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
-summary['mzMLs']        = params.reads
+summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
-summary['Modifications']= params.mods
+summary['Modifications'] = params.mods
+summary['Isobaric tags'] = params.isobaric
+summary['Isobaric activation'] = params.activation
+summary['Isobaric median normalization'] = params.normalize
+summary['Output genes'] = params.genes
+summary['Output symbols'] = params.symbols
+summary['Custom FASTA delimiter'] = params.fastadelim 
+summary['Custom FASTA gene field'] = params.genefield
+summary['Premade quant data SQLite'] = params.quantlookup
+summary['Fractionated sample'] = fractionation
+summary['HiRIEF'] = params.hirief 
+summary['peptide pI data'] = params.pipep
+summary['Only output peptides'] = params.onlypeptides
+summary['Do not quantify'] = params.noquant
 summary['Max Memory']   = params.max_memory
 summary['Max CPUs']     = params.max_cpus
 summary['Max Time']     = params.max_time
@@ -173,10 +211,10 @@ def create_workflow_summary(summary) {
 
     def yaml_file = workDir.resolve('workflow_summary_mqc.yaml')
     yaml_file.text  = """
-    id: 'nf-core-dda-quant-proteomics-summary'
+    id: 'nf-core-ddamsproteomics-summary'
     description: " - this information is collected when the pipeline is started."
-    section_name: 'nf-core/dda-quant-proteomics Workflow Summary'
-    section_href: 'https://github.com/nf-core/dda-quant-proteomics'
+    section_name: 'nf-core/ddamsproteomics Workflow Summary'
+    section_href: 'https://github.com/nf-core/ddamsproteomics'
     plot_type: 'html'
     data: |
         <dl class=\"dl-horizontal\">
@@ -246,18 +284,6 @@ strips
   .set { strips_for_deltapi }
 
 
-if (params.speclookup && !params.quantlookup) {
-  Channel
-    .fromPath(params.speclookup)
-    .into{ spec_lookup; countlookup }
-} 
-if (!params.speclookup && params.quantlookup) {
-  Channel
-    .fromPath(params.quantlookup)
-    .into { spec_lookup; quant_lookup; countlookup }
-} 
-
-
 process hardklor_kronik {
   when: !params.quantlookup && !params.noquant
 
@@ -289,7 +315,7 @@ mzmlfiles
 
 process createSpectraLookup {
 
-  when: !(params.speclookup || params.quantlookup)
+  when: !params.quantlookup
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames) from mzmlfiles_all
@@ -320,19 +346,24 @@ kronik_out
   .set { krfiles_sets }
 
 
-if (params.noquant && !(params.speclookup || params.quantlookup)) {
+if (params.noquant && !params.quantlookup) {
   newspeclookup
     .into { quant_lookup; spec_lookup; countlookup }
-} else if (!(params.speclookup || params.quantlookup)) {
+} else if (!params.quantlookup) {
   newspeclookup
     .into { spec_lookup; countlookup }
-}
+} else {
+  Channel
+    .fromPath(params.quantlookup)
+    .into { quant_lookup; countlookup }
+} 
+
 
 process quantLookup {
 
   when: !params.quantlookup && !params.noquant
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: 'quant_lookup.sql'
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'db.sqlite' ? 'quant_lookup.sql' : null }
 
   input:
   file lookup from spec_lookup
@@ -382,7 +413,7 @@ process countMS2perFile {
 }
 
 
-if (params.hirief) {
+if (fractionation) { 
   specfilems2.set { scans_platecount }
 } else {
   specfilems2
@@ -394,7 +425,7 @@ if (params.hirief) {
 process countMS2sPerPlate {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true 
-  when: params.hirief
+  when: fractionation
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
@@ -419,7 +450,7 @@ process countMS2sPerPlate {
   """
 }
 
-if (params.hirief) {
+if (fractionation) {
   scans_perplate.set { scans_result }
 }
 
@@ -734,7 +765,7 @@ process psmQC {
   // TODO no proteins == no coverage for pep centric
   script:
   """
-  qc_psms.R ${setnames[0].size()} ${params.hirief ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
+  qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
@@ -837,9 +868,9 @@ process output_documentation {
 workflow.onComplete {
 
     // Set up the e-mail variables
-    def subject = "[nf-core/dda-quant-proteomics] Successful: $workflow.runName"
+    def subject = "[nf-core/ddamsproteomics] Successful: $workflow.runName"
     if(!workflow.success){
-      subject = "[nf-core/dda-quant-proteomics] FAILED: $workflow.runName"
+      subject = "[nf-core/ddamsproteomics] FAILED: $workflow.runName"
     }
     def email_fields = [:]
     email_fields['version'] = workflow.manifest.version
@@ -887,11 +918,11 @@ workflow.onComplete {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
           // Try to send HTML e-mail using sendmail
           [ 'sendmail', '-t' ].execute() << sendmail_html
-          log.info "[nf-core/dda-quant-proteomics] Sent summary e-mail to $params.email (sendmail)"
+          log.info "[nf-core/ddamsproteomics] Sent summary e-mail to $params.email (sendmail)"
         } catch (all) {
           // Catch failures and try with plaintext
           [ 'mail', '-s', subject, params.email ].execute() << email_txt
-          log.info "[nf-core/dda-quant-proteomics] Sent summary e-mail to $params.email (mail)"
+          log.info "[nf-core/ddamsproteomics] Sent summary e-mail to $params.email (mail)"
         }
     }
 
@@ -905,6 +936,6 @@ workflow.onComplete {
     def output_tf = new File( output_d, "pipeline_report.txt" )
     output_tf.withWriter { w -> w << email_txt }
 
-    log.info "[nf-core/dda-quant-proteomics] Pipeline Complete"
+    log.info "[nf-core/ddamsproteomics] Pipeline Complete"
 
 }

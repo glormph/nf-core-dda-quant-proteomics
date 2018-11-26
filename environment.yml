@@ -1,4 +1,4 @@
-name: nf-core-dda-quant-proteomics-1.0dev
+name: nf-core-ddamsproteomics-1.0dev
 channels:
   - bioconda
   - bioconda-legacy
@@ -7,13 +7,13 @@ channels:
 dependencies:
   - bioconda::hardklor=2.3.0
   - bioconda::kronik=2.20
-  - bioconda::msstitch=2.8
+  - bioconda::msstitch=2.9
   - conda-forge::biopython=1.72
   - bioconda::msgf_plus=2017.07.21
   - bioconda::percolator=3.1
   - conda-forge::lxml=4.2.5
-  - conda-forge::fontconfig=2.13.1
   - conda-forge::jinja2=2.10
-  - r::r-ggplot2=3.0.0
-  - bioconda-legacy::r-reshape2=1.4.2
+  - conda-forge::r-ggplot2=3.0.0
+  - conda-forge::r-reshape2=1.4.2
   - conda-forge::r-forcats=0.3.0
+  - conda-forge::r-rmarkdown=1.10
