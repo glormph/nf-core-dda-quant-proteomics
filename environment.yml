@@ -1,7 +1,6 @@
 name: nf-core-ddamsproteomics-1.0dev
 channels:
   - bioconda
-  - bioconda-legacy
   - conda-forge
   - defaults
 dependencies:

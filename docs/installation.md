@@ -57,7 +57,7 @@ export NXF_OFFLINE='TRUE'
 
 #### 2.3) Development
 
-If you would like to make changes to the pipeline, it's best to fork the repo on GitHub and then clone the files. Once cloned you can run the pipeline directly as above.
+If you would like to make changes to the pipeline, it's best to make a fork on GitHub and then clone the files. Once cloned you can run the pipeline directly as above.
 
 
 ## 3) Pipeline configuration

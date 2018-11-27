@@ -7,6 +7,7 @@ This document describes the output produced by the pipeline.
 The pipeline is built using [Nextflow](https://www.nextflow.io/)
 and processes data using the following steps:
 
+<<<<<<< HEAD
 * [MSGF+](#msgf) - Peptide identification search engine
 * [Percolator](#percolator) - Target-decoy scoring
 * [OpenMS](#openms) - Quantification of isobaric tags

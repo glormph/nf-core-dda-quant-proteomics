@@ -10,6 +10,9 @@ The path must be enclosed in quotes (`'` or `"`)
 ## Data organization
 The pipeline can't take a list of multiple input files - it takes a glob expression. If your input files are scattered in different paths then we recommend that you generate a directory with symlinked files. 
 
+## Data organization
+The pipeline can't take a list of multiple input files - it takes a glob expression. If your input files are scattered in different paths then we recommend that you generate a directory with symlinked files. 
+
 ## Extra resources and getting help
 If you still have an issue with running the pipeline then feel free to contact us.
 Have a look at the [pipeline website](https://github.com/nf-core/ddamsproteomics) to find out how.
