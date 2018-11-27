@@ -69,7 +69,8 @@ if (has_fractions) {
   xcol = 'SpectraFile'
 }
   
-ptypes = list(retentiontime=c('Retention.time.min.', 'time(min)'), precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'), fryield=c('SpecID', '# PSMs'))
+ptypes = list(retentiontime=c('Retention.time.min.', 'time(min)'), precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'), 
+              fryield=c('SpecID', '# PSMs'), msgfscore=c('MSGFScore', 'MSGF Score'))
 fryield_form = paste('SpecID ~', xcol)
 for (plateid in plateids) {
   if (has_fractions) {
@@ -79,7 +80,7 @@ for (plateid in plateids) {
     w = 30 * 72
   } else { 
     subfeats = feats
-    h = (2 * nrsets + 1) * 72
+    h = (2 * length(unique(feats[xcol])) + 1) * 72
     w = 1200
   }
   for (ptype in names(ptypes)) {
@@ -92,7 +93,7 @@ for (plateid in plateids) {
       p = ggplot(plotdata, aes_string(x=xcol, y=ptypes[[ptype]][1])) + geom_violin(trim=F) 
     }
     png(fn, height=h, width=w)
-    p = p + ylab(ptype[2]) + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20))
+    p = p + ylab(ptypes[[ptype]][2]) + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20))
     if(!has_fractions) p = p + xlab('Sample') + coord_flip()
     print(p)
     dev.off()

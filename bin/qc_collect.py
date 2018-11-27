@@ -17,8 +17,9 @@ main = Template("""<!DOCTYPE html>
   {{ logo }} 
   <hr>
   <h3 class="title is-3">Protein/peptide level QC</h3>
-{% for graphtype in ["featyield", "precursorarea", "isobaric", "nrpsms", "nrpsmsoverlapping", "percentage_onepsm"] %}
-  {% if graphtype in features['peptides'] %}
+{% for graphtype in ["featyield", "precursorarea", "isobaric", "nrpsms", "nrpsmsoverlapping", 
+                     "percentage_onepsm", "ms1nrpeps"] %}
+  {% if graphtype in features['peptides'] or ('proteins' in features and graphtype in features['proteins']) %}
   <h4 class="title is-4">{{ titles[graphtype] }}</h4>
   <div class="columns">
     {% for feat in features %}
@@ -101,15 +102,16 @@ else:
     fryield = 'Yield'
     ppsms['No plate'] = {x.attrib['id']: tostring(x, encoding='unicode') for x in psmsel if x.attrib['class'] == 'chunk noplates'}
 
-print(psms)
 titles = {'psm-scans': '# PSMs and scans', 'miscleav': 'Missed cleavages',
           'missing-tmt': 'Isobaric missing values', 'fryield': fryield,
           'retentiontime': 'Retention time', 'precerror': 'Precursor error',
+          'msgfscore': 'MSGF Score',
           'featyield': 'Identifications', 'isobaric': 'Isobaric intensities',
           'precursorarea': 'Precursor area intensity',
           'nrpsms': '# PSMs used for isobaric quantitation per identification',
           'nrpsmsoverlapping': '# PSMs used for isobaric quantitation per identification for only complete overlapping set',
           'percentage_onepsm': 'Percentage of identifications with >1 quantifying PSM in the complete overlapping set',
+          'ms1nrpeps': '# peptides with MS1 quant per protein (top 3 used)',
           'coverage': 'Overall protein coverage',
 }
 featnames = {'assoc': 'Gene symbols', 'peptides': 'Peptides', 'proteins': 'Proteins', 'genes': 'Genes'}

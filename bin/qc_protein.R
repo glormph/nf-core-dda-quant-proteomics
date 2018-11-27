@@ -6,10 +6,11 @@ library(reshape2)
 args = commandArgs(trailingOnly=TRUE)
 nrsets = as.numeric(args[1])
 feattype = args[2]
+peptable = args[3]
 make_normtable = FALSE
-if(length(args) == 3) {
+if(length(args) == 4) {
  make_normtable = TRUE
- normtable = args[3]
+ normtable = args[4]
 }
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
@@ -166,4 +167,24 @@ if (make_normtable && length(grep('plex', names(feats)))) {
     theme(axis.title=element_text(size=30), axis.text=element_text(size=20)) + 
     theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()))
   dev.off()
+}
+
+# ranked step plot MS1 peptide per protein
+if (feattype != 'peptides') {
+  peps = read.table(peptable, header=T, sep='\t', comment.char='', quote='')
+  ms1qcols = grep('MS1.area', colnames(peps))
+  nrpep_set = melt(peps, id.vars=c("Protein.s."), measure.vars=ms1qcols, na.rm=T)
+  print(dim(nrpep_set), length(nrpep_set))
+  if (dim(nrpep_set)[1] != 0) {
+    nrpep_set$Set = sub('_MS1.area.*', '', nrpep_set$variable)
+    nrpep_set = aggregate(variable~Protein.s.+Set, nrpep_set, length) 
+    nrpep_set = transform(nrpep_set, setrank=ave(variable, Set, FUN = function(x) rank(x, ties.method = "random")))
+    png('ms1nrpeps')
+    print(ggplot(nrpep_set, aes(y=variable, x=setrank)) +
+      geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# peptides with MS1') +
+      theme_bw() + 
+      theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+      scale_x_reverse())
+    dev.off()
+  }
 }
