@@ -1,6 +1,6 @@
-# nf-core/lehtio-quant-proteomics: Installation
+# nf-core/ddamsproteomics: Installation
 
-To start using the nf-core/lehtio-quant-proteomics pipeline, follow the steps below:
+To start using the nf-core/ddamsproteomics pipeline, follow the steps below:
 
 1. [Install Nextflow](#1-install-nextflow)
 2. [Install the pipeline](#2-install-the-pipeline)
@@ -36,17 +36,17 @@ See [nextflow.io](https://www.nextflow.io/) for further instructions on how to i
 ## 2) Install the pipeline
 
 #### 2.1) Automatic
-This pipeline itself needs no installation - NextFlow will automatically fetch it from GitHub if `nf-core/lehtio-quant-proteomics` is specified as the pipeline name.
+This pipeline itself needs no installation - NextFlow will automatically fetch it from GitHub if `nf-core/ddamsproteomics` is specified as the pipeline name.
 
 #### 2.2) Offline
 The above method requires an internet connection so that Nextflow can download the pipeline files. If you're running on a system that has no internet connection, you'll need to download and transfer the pipeline files manually:
 
 ```bash
-wget https://github.com/nf-core/lehtio-quant-proteomics/archive/master.zip
+wget https://github.com/nf-core/ddamsproteomics/archive/master.zip
 mkdir -p ~/my-pipelines/nf-core/
 unzip master.zip -d ~/my-pipelines/nf-core/
 cd ~/my_data/
-nextflow run ~/my-pipelines/nf-core/lehtio-quant-proteomics-master
+nextflow run ~/my-pipelines/nf-core/ddamsproteomics-master
 ```
 
 To stop nextflow from looking for updates online, you can tell it to run in offline mode by specifying the following environment variable in your ~/.bashrc file:
@@ -73,7 +73,7 @@ Be warned of two important points about this default configuration:
 #### 3.1) Software deps: Docker
 First, install docker on your system: [Docker Installation Instructions](https://docs.docker.com/engine/installation/)
 
-Then, running the pipeline with the option `-profile standard,docker` tells Nextflow to enable Docker for this run. An image containing all of the software requirements will be automatically fetched and used from dockerhub (https://hub.docker.com/r/nfcore/lehtio-quant-proteomics).
+Then, running the pipeline with the option `-profile standard,docker` tells Nextflow to enable Docker for this run. An image containing all of the software requirements will be automatically fetched and used from dockerhub (https://hub.docker.com/r/nfcore/ddamsproteomics).
 
 #### 3.1) Software deps: Singularity
 If you're not able to use Docker then [Singularity](http://singularity.lbl.gov/) is a great alternative.
@@ -82,13 +82,13 @@ The process is very similar: running the pipeline with the option `-profile stan
 If running offline with Singularity, you'll need to download and transfer the Singularity image first:
 
 ```bash
-singularity pull --name nf-core-lehtio-quant-proteomics.simg shub://nf-core/lehtio-quant-proteomics
+singularity pull --name nf-core-ddamsproteomics.simg shub://nf-core/ddamsproteomics
 ```
 
 Once transferred, use `-with-singularity` and specify the path to the image file:
 
 ```bash
-nextflow run /path/to/nf-core-lehtio-quant-proteomics -with-singularity nf-core-lehtio-quant-proteomics.simg
+nextflow run /path/to/nf-core-ddamsproteomics -with-singularity nf-core-ddamsproteomics.simg
 ```
 
 Remember to pull updated versions of the singularity image if you update the pipeline.
