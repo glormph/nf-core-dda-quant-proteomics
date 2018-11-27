@@ -776,6 +776,7 @@ process proteinPeptideSetMerge {
   
   output:
   set val(acctype), file('proteintable') into featuretables
+  set val(acctype), file('proteintable') into featqc_getpeptable
 
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
@@ -811,7 +812,7 @@ process psmQC {
     do
     [[ -e \$graph ]] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> psmqc.html
     done 
-  for graph in retentiontime precerror fryield
+  for graph in retentiontime precerror fryield msgfscore
     do
     for plateid in ${plates.join(' ')}
       do
@@ -823,8 +824,14 @@ process psmQC {
   """
 }
 
+featqc_getpeptable
+  .filter { it[0] == 'peptides' }
+  .map { it -> it[1] }
+  .set { featqc_peptides }
 featuretables
   .merge(setnames_featqc)
+  .combine(featqc_peptides)
+  .view()
   .set { featqcinput }
 
 normratios
@@ -836,7 +843,7 @@ normratios
 process featQC {
 
   input:
-  set val(acctype), file('feats'), val(setnames) from featqcinput
+  set val(acctype), file('feats'), val(setnames), file(peptable) from featqcinput
   set val(setnames), file('norm?') from allsetnormratios
   output:
   set val(acctype), file('featqc.html') into qccollect
@@ -844,9 +851,9 @@ process featQC {
   script:
   """
   ${normalize ? "count=1;for setn in ${setnames.join(' ')}; do echo '' >> norm\${count} ; tail -n+2 norm\${count} | sed \$'s/ - /\t'\${setn}\$'\t/'; ((count++)); done >> normtable" : ''}
-  qc_protein.R ${setnames.size()} ${acctype} ${normalize ? 'normtable' : ''}
+  qc_protein.R ${setnames.size()} ${acctype} $peptable ${normalize ? 'normtable' : ''}
   echo "<html><body>" > featqc.html
-  for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm normfac;
+  for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm normfac ms1nrpeps;
     do
     [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
     done 
