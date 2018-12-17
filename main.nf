@@ -83,6 +83,7 @@ params.plaintext_email = false
 
 params.martmap = false
 params.isobaric = false
+params.instrument = 'qe' // Default instrument is Q-Exactive
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
@@ -98,15 +99,13 @@ params.onlypeptides = false
 params.noquant = false
 
 // Validate and set file inputs
-fractionation = params.hirief || params.fractions ? true : false
+fractionation = (params.hirief || params.fractions)
 mods = file(params.mods)
 if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
 tdb = file(params.tdb)
 if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
-// file templates
-hkconf = file("$baseDir/assets/hardklor.conf")
-
+// Files which are not standard can be checked here
 if (params.martmap) {
   martmap = file(params.martmap)
   if( !martmap.exists() ) exit 1, "Biomart ENSEMBL mapping file not found: ${params.martmap}"
@@ -117,20 +116,17 @@ if (params.pipep) {
 }
 output_docs = file("$baseDir/docs/output.md")
 
-// Parse input variables values
+// set constant variables
 accolmap = [peptides: 12, proteins: 14, genes: 17, assoc: 18]
+
+
+// parse inputs that combine to form values or are otherwise more complex.
 setdenoms = [:]
 if (!(params.noquant) && params.isobaric) {
   params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
 }
-normalize = (params.normalize && params.isobaric) ? true: false
-activations = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation']
-activationtype = activations[params.activation]
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
-massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
-msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
-instrument = params.instrument ? params.instrument : 'qe'
-msgfinstrument = [velos:1, qe:3, false:0][instrument]
+normalize = (!params.noquant && params.normalize && params.isobaric)
 
 
 // AWSBatch sanity checking
@@ -171,6 +167,7 @@ summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
 summary['Modifications'] = params.mods
+summary['Instrument'] = params.instrument
 summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
 summary['Isobaric median normalization'] = params.normalize
@@ -260,41 +257,48 @@ else if (!params.mzmldef) {
     .set { mzml_in }
 }
 
+
+// Parse mzML input to get files and sample names etc
+// get setname, sample name (baseName), input mzML file. 
+// Set platename to samplename if not specified. 
+// Set fraction name to NA if not specified
 mzml_in
-  .tap { sets }
-  .map { it -> [file(it[0]), it[1], it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]} // create file, set plate to setname, and fraction to NA if there is none
-  .tap { strips }
-  .map { it -> [it[1], it[0].baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), it[0], it[2], it[3]] }
-  .tap{ mzmlfiles; mzml_isobaric; mzml_hklor; mzml_msgf }
+  .map { it -> [it[1], file(it[0]).baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), file(it[0]), it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]}
+  .tap{ sets; strips; mzmlfiles; mzml_isobaric; mzml_quant; mzml_msgf }
   .count()
   .set{ amount_mzml }
 
+// Set names are first item in input lists, collect them for PSM tables and QC purposes
 sets
-  .map{ it -> it[1] }
+  .map{ it -> it[0] }
   .unique()
   .tap { setnames_psm } 
   .collect()
   .map { it -> [it] }
   .into { setnames_featqc; setnames_psmqc }
 
+// Strip names for HiRIEF fractionation are third item, 
 strips
-  .map { it -> it[2] }
+  .map { it -> it[3] }
   .unique()
   .toList()
   .set { strips_for_deltapi }
 
 
-process hardklor_kronik {
+process quantifySpectra {
   when: !params.quantlookup && !params.noquant
 
   input:
-  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_hklor
-  file hkconf
+  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_quant
+  file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
   set val(sample), file("${sample}.kr"), file(infile) into kronik_out
   set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
 
+  script:
+  activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   """
   cp $hkconf config
   echo "$infile" hardklor.out >> config
@@ -306,6 +310,7 @@ process hardklor_kronik {
 }
 
 
+// Collect all mzMLs into single item to pass to lookup builder and spectra counter
 mzmlfiles
   .buffer(size: amount_mzml.value)
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
@@ -330,14 +335,15 @@ process createSpectraLookup {
 }
 
 
-isoquant_amount = params.isobaric ? amount_mzml.value : 1
+// Collect all isobaric quant XML output for quant lookup building process
 isobaricxml
   .ifEmpty(['NA', 'NA', 'NA'])
-  .buffer(size: isoquant_amount)
+  .buffer(size: params.isobaric ? amount_mzml.value : 1)
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }] } // samples, isoxml
   .set { isofiles_sets }
 
+// Collect all MS1 kronik output for quant lookup building process
 kronik_out
   .ifEmpty(['NA', 'NA'])
   .buffer(size: amount_mzml.value)
@@ -346,6 +352,8 @@ kronik_out
   .set { krfiles_sets }
 
 
+// Need to populate channels depending on if a pre-made quant lookup has been passed
+// even if not needing quant (--noquant) this is necessary or NF will error
 if (params.noquant && !params.quantlookup) {
   newspeclookup
     .into { quant_lookup; spec_lookup; countlookup }
@@ -461,7 +469,7 @@ process createTargetDecoyFasta {
 
   output:
   file('db.fa') into concatdb
-  set file(tdb), file("decoy_${tdb}") into searchdbs
+  set file(tdb), file("decoy_${tdb}") into searchdbs 
 
   script:
   """
@@ -482,6 +490,9 @@ process msgfPlus {
   set val(setname), val(sample), file("${sample}.mzid") into mzids
   set val(setname), file("${sample}.mzid"), file('out.mzid.tsv'), val(platename), val(fraction) into mzidtsvs
   
+  script:
+  msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
+  msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
   """
   msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread 12 -mod $mods -tda 0 -t 10.0ppm -ti -1,2 -m 0 -inst ${msgfinstrument} -e 1 -protocol ${msgfprotocol} -ntt 2 -minLength 7 -maxLength 50 -minCharge 2 -maxCharge 6 -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.mzid.tsv
@@ -533,12 +544,14 @@ process svmToTSV {
   """
 }
 
+// Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
   .concat(dmzidtsv_perco)
   .groupTuple(by: 1)
   .combine(quant_lookup)
   .set { prepsm }
 
+// Set strips to false if not running hirief
 if (params.hirief) {
   strips_for_deltapi
     .map { it -> [it, trainingpep] }
@@ -548,6 +561,7 @@ if (params.hirief) {
     .map { it -> [it, false, false]}
     .set { stripannot }
 }
+
 
 process createPSMTable {
 
@@ -583,11 +597,11 @@ process createPSMTable {
   """
 }
 
+// Collect setnames and merge with PSM tables for peptide table creation
 setnames_psm
   .toList()
   .map { it -> [it.sort()]}
   .set { setlist_psm }
-
 setpsmtables
   .map { it -> [it[0], it[1] instanceof java.util.List ? it[1] : [it[1]] ] }
   .map{ it -> [it[0], it[1].sort { a, b -> a.baseName.tokenize('.')[0] <=> b.baseName.tokenize('.')[0] }] } // names are setnames, sort on them then merge with sorted setnames
@@ -627,6 +641,9 @@ process psm2Peptides {
 }
 
 
+// Different amount of processes depending on genes and gene symbols are desired
+// Input for proteins, genes and symbols is identical at this stage so tap and concat
+// onto itself.
 if (params.genes && params.symbols) { 
   pepslinmod
     .tap { pepsg; pepss }
@@ -705,6 +722,7 @@ process proteinFDR {
   """
 }
 
+// Prepare for set-tables merging into a side-by-side table
 peptides_out
   .filter { it[2] == 'target' }
   .map { it -> [it[0], it[1], it[3]] }
@@ -808,7 +826,6 @@ process featQC {
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm normfac;
     do
-    echo \$graph
     [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
     done 
   echo "</body></html>" >> featqc.html
