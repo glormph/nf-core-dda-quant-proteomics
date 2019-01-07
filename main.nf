@@ -285,6 +285,10 @@ strips
   .set { strips_for_deltapi }
 
 
+/*
+* Step 1: Extract quant data from peptide spectra
+*/
+
 process quantifySpectra {
   when: !params.quantlookup && !params.noquant
 
@@ -462,6 +466,10 @@ if (fractionation) {
   scans_perplate.set { scans_result }
 }
 
+/*
+* Step 2: Identify peptides
+*/
+
 process createTargetDecoyFasta {
  
   input:
@@ -562,6 +570,10 @@ if (params.hirief) {
     .set { stripannot }
 }
 
+
+/*
+* Step 3: Post-process peptide identification data
+*/
 
 process createPSMTable {
 
@@ -669,6 +681,10 @@ if (params.genes && params.symbols) {
 }
 
 
+/*
+* Step 4: Infer and quantify proteins and genes
+*/
+
 process prepProteinGeneSymbolTable {
 
   when: !params.onlypeptides
@@ -744,6 +760,10 @@ psmlookup
   .collect()
   .map { it[1] }
   .set { tlookup }
+
+/*
+* Step 5: Create reports
+*/
 
 process proteinPeptideSetMerge {
 
