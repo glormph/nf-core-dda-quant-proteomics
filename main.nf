@@ -304,6 +304,8 @@ process quantifySpectra {
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   """
+  # Run hardklor on config file with added line for in/out files
+  # then run kronik on hardklor and quant isobaric labels if necessary
   hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
   kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
   source activate openms-2.4.0
@@ -641,15 +643,20 @@ process psm2Peptides {
   col = accolmap.peptides + 1  // psm2pep adds a column
   isoquant = !params.noquant && params.isobaric && td == 'target'
   """
+  # Create peptide table from PSM table, picking best scoring unique peptides
   msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
+  # Move peptide sequence to first column
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
+  # Create empty protein/gene/gene-symbol tables with only the identified accessions, will be filled later
   echo Protein accession |tee proteins genes symbols
   tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> proteins
   tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> genes
   tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> symbols
+  # Do isobaric quantification if necessary
   ${normalize && td == 'target' ? "msspsmtable isoratio -i psms -o proteinratios --protcol ${accolmap.proteins} --targettable proteins --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : 'touch proteinratios'}
   ${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
   ${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
+  # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
   """
 }
