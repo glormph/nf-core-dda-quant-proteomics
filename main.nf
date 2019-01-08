@@ -585,28 +585,28 @@ process createPSMTable {
   set val(allstrips), file(trainingpep) from stripannot
 
   output:
-  set val(td), file("${td}_psmtable.txt") into psm_result
+  set val(td), file("${outpsms}") into psm_result
   set val(td), file({setnames.collect() { it + '.tsv' }}) into setpsmtables
-  set val(td), file("${td}_psmlookup.sql") into psmlookup
+  set val(td), file("${psmlookup}") into psmlookup
 
   script:
+  psmlookup = "${td}_psmlookup.sql"
+  outpsms = "${td}_psmtable.txt"
   """
   msspsmtable merge -i psms* -o psms.txt
   msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'PSM q-value'
   msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'peptide q-value'
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
-  cat lookup > psmlookup
-  msslookup psms -i filtpep --dbfile psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? tdb : "${ddb} --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
-  msspsmtable specdata -i filtpep --dbfile psmlookup -o prepsms.txt
-  ${!params.noquant ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile psmlookup --precursor ${params.isobaric && td=='target' ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
+  cat lookup > $psmlookup
+  msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? tdb : "${ddb} --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
+  msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt
+  ${!params.noquant ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric && td=='target' ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
   sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
-  ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile psmlookup" : ''}
-  ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile psmlookup" : ''}
-  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o pgpsms --dbfile psmlookup" : 'mv qpsms.txt pgpsms'}
-  ${params.hirief ? "peptide_pi_annotator.py -i $trainingpep -p pgpsms --o dppsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --strippatterns ${allstrips.join(' ')} --intercepts ${allstrips.collect() { params.strips[it].intercept}.join(' ')} --widths ${allstrips.collect() { params.strips[it].fr_width}.join(' ')} --ignoremods \'*\'" : ''}
-  msspsmtable split -i ${params.hirief ? 'dppsms' : 'pgpsms'} --bioset
-  mv ${params.hirief ? 'dppsms' : 'pgpsms'} ${td}_psmtable.txt
-  mv psmlookup ${td}_psmlookup.sql
+  ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
+  ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile $psmlookup" : ''}
+  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o ${params.hirief ? "pgpsms" : "$outpsms"} --dbfile $psmlookup" : 'mv qpsms.txt pgpsms'}
+  ${params.hirief ? "peptide_pi_annotator.py -i $trainingpep -p pgpsms --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --strippatterns ${allstrips.join(' ')} --intercepts ${allstrips.collect() { params.strips[it].intercept}.join(' ')} --widths ${allstrips.collect() { params.strips[it].fr_width}.join(' ')} --ignoremods \'*\'" : ''}
+  msspsmtable split -i ${outpsms} --bioset
   """
 }
 
@@ -639,6 +639,7 @@ process psm2Peptides {
 
   script:
   col = accolmap.peptides + 1  // psm2pep adds a column
+  isoquant = !params.noquant && params.isobaric && td == 'target'
   """
   msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
@@ -647,8 +648,8 @@ process psm2Peptides {
   tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> genes
   tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> symbols
   ${normalize && td == 'target' ? "msspsmtable isoratio -i psms -o proteinratios --protcol ${accolmap.proteins} --targettable proteins --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : 'touch proteinratios'}
-  ${!params.noquant && params.isobaric && td == 'target' ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
-  ${!params.noquant && params.isobaric && td == 'target' ?  "mv pepisoquant peptide_table.txt" : ''}
+  ${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
+  ${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
   """
 }
