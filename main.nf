@@ -304,9 +304,7 @@ process quantifySpectra {
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   """
-  cp $hkconf config
-  echo "$infile" hardklor.out >> config
-  hardklor config
+  hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
   kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
   source activate openms-2.4.0
   ${params.isobaric ? "IsobaricAnalyzer  -type $params.isobaric -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
@@ -388,13 +386,15 @@ process quantLookup {
   script:
   if (params.isobaric)
   """
-  cp $lookup db.sqlite
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
   msslookup ms1quant --dbfile db.sqlite -i ${krfns.join(' ')} --spectra ${mzmls.join(' ')} --quanttype kronik --mztol 20.0 --mztoltype ppm --rttol 5.0 
   msslookup isoquant --dbfile db.sqlite -i ${isofns.join(' ')} --spectra ${isosamples.collect{ x -> x + '.mzML' }.join(' ')}
   """
   else
   """
-  cp $lookup db.sqlite
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
   msslookup ms1quant --dbfile db.sqlite -i ${krfns.join(' ')} --spectra ${mzmls.join(' ')} --quanttype kronik --mztol 20.0 --mztoltype ppm --rttol 5.0 
   """
 }
@@ -594,7 +594,8 @@ process createPSMTable {
   msspsmtable merge -i psms* -o psms.txt
   msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'PSM q-value'
   msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'peptide q-value'
-  cp lookup psmlookup
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat lookup > psmlookup
   msslookup psms -i filtpep --dbfile psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? tdb : "${ddb} --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
   msspsmtable specdata -i filtpep --dbfile psmlookup -o prepsms.txt
   ${!params.noquant ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile psmlookup --precursor ${params.isobaric && td=='target' ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
@@ -779,7 +780,8 @@ process proteinPeptideSetMerge {
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
-  cp $lookup db.sqlite
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
   msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--psmnrcolpattern quanted --isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
   ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o proteintable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
   sed -i 's/\\#/Amount/g' proteintable
