@@ -6,6 +6,12 @@ import re
 regexes = {
     'nf-core/ddamsproteomics': ['v_pipeline.txt', r"(\S+)"],
     'Nextflow': ['v_nextflow.txt', r"(\S+)"],
+    'MSGF+': ['v_msgf.txt', r"([0-9\.]+)"],
+    'Hardklor': ['v_hk.txt', r"([0-9\.]+)"],
+    'Kronik': ['v_kr.txt', r"([0-9\.]+)"],
+    'Percolator': ['v_perco.txt', r"([0-9\.]+)"],
+    'msstitch': ['v_mss.txt', r"(\S+)"],
+    'OpenMS': ['v_openms.txt', r"Version: ([0-9A-Z\-\.]+)"],
 }
 
 results = OrderedDict()

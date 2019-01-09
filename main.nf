@@ -235,6 +235,13 @@ process get_software_versions {
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
+    msgf_plus | head -n1 > v_msgf.txt
+    hardklor | head -n1 > v_hk.txt || true
+    kronik | head -n2 > v_kr.txt
+    percolator -h |& head -n1 > v_perco.txt || true
+    msspsmtable --version > v_mss.txt
+    source activate openms-2.4.0
+    IsobaricAnalyzer |& grep Version > v_openms.txt || true
     scrape_software_versions.py > software_versions_mqc.yaml
     """
 }
