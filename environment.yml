@@ -7,7 +7,7 @@ dependencies:
   - bioconda::msgf_plus=2017.07.21
   - bioconda::hardklor=2.3.0
   - bioconda::kronik=2.20
-  - bioconda::msstitch=2.11
+  - bioconda::msstitch=2.12
   - conda-forge::biopython=1.72
   - bioconda::percolator=3.1
   - conda-forge::lxml=4.2.5
