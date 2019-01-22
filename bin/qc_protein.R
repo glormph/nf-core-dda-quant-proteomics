@@ -14,6 +14,33 @@ if(length(args) == 4) {
 }
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
+if (feattype == 'peptides') {
+  featcol = 'Peptide.sequence'
+} else {
+  featcol = 'Protein.accession'  
+}
+
+# nrpsms
+if (length(grep('plex', names(feats)))) {
+  nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
+  nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
+  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
+  if (feattype == 'peptides') {
+    nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
+  } else {
+    nrpsms = aggregate(value~Protein.accession+Set, nrpsms, max)
+  }
+  nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
+  png('nrpsms')
+  print(ggplot(nrpsms, aes(y=value, x=setrank)) +
+    geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
+    theme_bw() + 
+    theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+    scale_x_reverse())
+    dev.off()
+}
+
+
 # featyield
 # summary table: 
   # PROT/GENE:
@@ -31,14 +58,10 @@ feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 qcols = colnames(feats)[grep('_q.value', colnames(feats))]
 overlap = na.exclude(feats[qcols])
 if (feattype == 'peptides') {
-  overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
-  featcol = 'Peptide.sequence'
   am_prots = melt(feats, id.vars=c(featcol, "Protein.s."), measure.vars=qcols)
   am_prots$nrprots = lengths(regmatches(am_prots$Protein.s., gregexpr(';', am_prots$Protein.s.))) + 1
   # aggregate feats and remove col with ; where?
 } else {
-  overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
-  featcol = 'Protein.accession'  
   am_prots = melt(feats, id.vars=featcol, measure.vars=qcols)
   pepcols = colnames(feats)[grep('Amount.Unique', colnames(feats))]
   pepprots = melt(feats, id.vars=featcol, measure.vars=pepcols)
@@ -79,16 +102,6 @@ if (feattype == 'peptides') {
 }
 dev.off()
 
-# precursorarea
-if (length(grep('area', names(feats)))) {
-    parea = melt(feats, id.vars=featcol, measure.vars = colnames(feats)[grep('area', colnames(feats))])
-    parea$Set = sub('_MS1.*', '', parea$variable)
-    png('precursorarea', height=(nrsets + 1) * 72)
-    print(ggplot(parea) + 
-      geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
-    dev.off()
-}
-
 # coverage
 if (feattype == 'proteins') {
   covmed = median(feats$Coverage)
@@ -102,7 +115,7 @@ if (feattype == 'proteins') {
 #isobaric
 if (length(grep('plex', names(feats)))) {
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
-  tmtcols = colnames(feats)[intersect(grep('quanted', colnames(feats), invert=T), grep('plex', colnames(feats)))]
+  tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
   tmt = melt(feats, id.vars=featcol, measure.vars = tmtcols)
@@ -110,7 +123,7 @@ if (length(grep('plex', names(feats)))) {
   tmt$variable = sub('.*_[a-z].*[0-9]*plex_', '', tmt$variable)
   png('isobaric', height=(3 * nrsets + 1) * 72)
   print(ggplot(na.exclude(tmt)) + geom_boxplot(aes(fct_rev(Set), value, fill=fct_rev(variable)), position=position_dodge(width=1)) +
-    scale_y_log10() + coord_flip() + ylab('Fold change') + xlab('Channels') + theme_bw() + 
+    coord_flip() + ylab('Fold change') + xlab('Channels') + theme_bw() + 
     theme(axis.title=element_text(size=30), axis.text=element_text(size=20), plot.title=element_text(size=30) ) + 
     theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()) +
     ggtitle(paste('Overlap with values in \nall ', length(tmtcols), 'channels: ', overlap)))
@@ -118,35 +131,15 @@ if (length(grep('plex', names(feats)))) {
 }
 
 
-# nrpsms
-if (length(grep('plex', names(feats)))) {
-  nrpsmscols = colnames(feats)[intersect(grep('quanted', colnames(feats)), grep('plex', colnames(feats)))]
-  nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$variable)
-  if (feattype == 'peptides') {
-    nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
-  } else {
-    nrpsms = aggregate(value~Protein.accession+Set, nrpsms, max)
-  }
-  nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
-  png('nrpsms')
-  print(ggplot(nrpsms, aes(y=value, x=setrank)) +
-    geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
-    theme_bw() + 
-    theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
-    scale_x_reverse())
-    dev.off()
-}
-
 #nrpsmsoverlapping
 if (length(grep('plex', names(feats)))) {
-  nrpsmscols = colnames(feats)[intersect(grep('quanted', colnames(feats)), grep('plex', colnames(feats)))]
+  nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
-  tmtcols = colnames(feats)[intersect(grep('quanted', colnames(feats), invert=T), grep('plex', colnames(feats)))]
+  tmtcols = colnames(feats)[grep('plex', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$variable)
+  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
   if (feattype == 'peptides') {
     nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
   } else {
@@ -165,34 +158,19 @@ if (length(grep('plex', names(feats)))) {
 
 # percentage_onepsm
 if (length(grep('plex', names(feats)))) {
-  nrpsmscols = colnames(feats)[intersect(grep('quanted', colnames(feats)), grep('plex', colnames(feats)))]
+  nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
-  tmtcols = colnames(feats)[intersect(grep('quanted', colnames(feats), invert=T), grep('plex', colnames(feats)))]
+  tmtcols = colnames(feats)[grep('plex', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$variable)
+  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
   feats_in_set = aggregate(value~Set, data=nrpsms, length) 
   feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
   png('percentage_onepsm')
   print(ggplot(feats_in_set, aes(Set, percent_single)) +
     geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
     theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) )
-  dev.off()
-}
-
-# normfac
-if (make_normtable && length(grep('plex', names(feats)))) {
-  norms = read.table(normtable, header=F, sep='\t', comment.char='', quote='')
-  colnames(norms) = c('variable', 'Set', 'value')
-  norms$variable = sub('[a-z].*[0-9]*plex_', '', norms$variable)
-  png('normfac', height=(3 * nrsets + 1) * 72)
-  print(ggplot(norms, aes(fct_rev(Set), value, group=variable)) + 
-    geom_col(aes(fill=variable), position=position_dodge(width=1)) +
-    geom_text(aes(y=0.1, label=value), position=position_dodge(width=1), colour="white", size=7, hjust=0) +
-    coord_flip() + ylab('Normalizing factor') + xlab('Channels') + theme_bw() + 
-    theme(axis.title=element_text(size=30), axis.text=element_text(size=20)) + 
-    theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()))
   dev.off()
 }
 
@@ -214,3 +192,14 @@ if (feattype != 'peptides') {
     dev.off()
   }
 }
+
+# precursorarea
+if (length(grep('area', names(feats)))) {
+    parea = melt(feats, id.vars=featcol, measure.vars = colnames(feats)[grep('area', colnames(feats))])
+    parea$Set = sub('_MS1.*', '', parea$variable)
+    png('precursorarea', height=(nrsets + 1) * 72)
+    print(ggplot(parea) + 
+      geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
+    dev.off()
+}
+
