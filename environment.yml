@@ -1,4 +1,4 @@
-name: nf-core-ddamsproteomics-1.0.0
+name: nf-core-ddamsproteomics-1.0.0dev
 channels:
   - bioconda
   - conda-forge
