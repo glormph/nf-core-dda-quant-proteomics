@@ -1,40 +1,33 @@
-# nf-core/lehtio-quant-proteomics: Output
+# nf-core/ddamsproteomics: Output
 
-This document describes the output produced by the pipeline. Most of the plots are taken from the MultiQC report, which summarises results at the end of the pipeline.
+This document describes the output produced by the pipeline. 
 
 
 ## Pipeline overview
 The pipeline is built using [Nextflow](https://www.nextflow.io/)
 and processes data using the following steps:
 
-* [FastQC](#fastqc) - read quality control
-* [MultiQC](#multiqc) - aggregate report, describing results of the whole pipeline
+* [MSGF+](#msgf) - Peptide identification search engine
+* [Percolator](#percolator) - Target-decoy scoring
+* [OpenMS](#openms) - Quantification of isobaric tags
+* [Hardklor/Kronik](#hardklor) - Quantification of precursor peptides
+* [Msstitch](#msstitch) - Post processing, protein inference
 
-## FastQC
-[FastQC](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/) gives general quality metrics about your reads. It provides information about the quality score distribution across your reads, the per base sequence content (%T/A/G/C). You get information about adapter contamination and other overrepresented sequences.
-
-For further reading and documentation see the [FastQC help](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/Help/).
-
-> **NB:** The FastQC plots displayed in the MultiQC report shows _untrimmed_ reads. They may contain adapter sequence and potentially regions with low quality. To see how your reads look after trimming, look at the FastQC reports in the `trim_galore` directory.
-
-**Output directory: `results/fastqc`**
-
-* `sample_fastqc.html`
-  * FastQC report, containing quality metrics for your untrimmed raw fastq files
-* `zips/sample_fastqc.zip`
-  * zip file containing the FastQC report, tab-delimited data file and plot images
+## MSGF+
+[MSGF+](https://omics.pnl.gov/software/ms-gf) (aka MSGF+ or MSGFPlus) performs peptide identification by scoring MS/MS spectra against peptides derived from a protein sequence database.
 
 
-## MultiQC
-[MultiQC](http://multiqc.info) is a visualisation tool that generates a single HTML report summarising all samples in your project. Most of the pipeline QC results are visualised in the report and further statistics are available in within the report data directory.
+## Percolator
+[Percolator](http://percolator.ms/) is a semi-supervised machine learning program to better separate target vs decoy peptide scoring.
 
-The pipeline has special steps which allow the software versions used to be reported in the MultiQC output for future traceability.
 
-**Output directory: `results/multiqc`**
+## OpenMS
+[OpenMS](http://www.openms.de/) is a library that contains a large amount of tools for MS data analysis. This workflow uses its isobaric quantification program to extract peak intenstities for isobaric multiplex samples.
 
-* `Project_multiqc_report.html`
-  * MultiQC report - a standalone HTML file that can be viewed in your web browser
-* `Project_multiqc_data/`
-  * Directory containing parsed statistics from the different tools used in the pipeline
 
-For more information about how to use MultiQC reports, see http://multiqc.info
+## Hardklor/Kronik
+[Hardklor](https://proteome.gs.washington.edu/software/hardklor/) identifies peptide features in MS1 data by reducing isotope distributions to a single monoisotopic mass. It in tandem with its [Kronik](https://github.com/mhoopmann/kronik) utility (which summarizes the Hardklor results from LC/MS data) can be used to quantify MS1 peptide features.
+
+
+## Msstitch
+[Msstitch](https://github.com/glormph/msstitch) is a package to merge identification and quantification PSM data, reporting PSM, peptide, protein and gene tables, adding q-values, quantitfications, protein groups, etc.

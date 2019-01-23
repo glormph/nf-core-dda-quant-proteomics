@@ -1,6 +1,6 @@
-# nf-core/lehtio-quant-proteomics: Documentation
+# nf-core/ddamsproteomics: Documentation
 
-The nf-core/lehtio-quant-proteomics documentation is split into the following files:
+The nf-core/ddamsproteomics documentation is split into the following files:
 
 1. [Installation](installation.md)
 2. [Running the pipeline](usage.md)

@@ -1,6 +1,6 @@
-# nf-core/lehtio-quant-proteomics: Reference Genomes Configuration
+# nf-core/ddamsproteomics: Reference Genomes Configuration
 
-The nf-core/lehtio-quant-proteomics pipeline needs a reference genome for alignment and annotation.
+The nf-core/ddamsproteomics pipeline needs a reference genome for alignment and annotation.
 
 These paths can be supplied on the command line at run time (see the [usage docs](../usage.md)),
 but for convenience it's often better to save these paths in a nextflow config file.

@@ -1,4 +1,4 @@
-# nf-core/lehtio-quant-proteomics: Usage
+# nf-core/ddamsproteomics: Usage
 
 ## Table of contents
 
@@ -12,11 +12,6 @@
         * [`awsbatch`](#awsbatch)
         * [`standard`](#standard)
         * [`none`](#none)
-    * [`--reads`](#--reads)
-    * [`--singleEnd`](#--singleend)
-* [Reference Genomes](#reference-genomes)
-    * [`--genome`](#--genome)
-    * [`--fasta`](#--fasta)
 * [Job Resources](#job-resources)
 * [Automatic resubmission](#automatic-resubmission)
 * [Custom resource requests](#custom-resource-requests)
@@ -34,8 +29,6 @@
     * [`--max_time`](#--max_time)
     * [`--max_cpus`](#--max_cpus)
     * [`--plaintext_emails`](#--plaintext_emails)
-    * [`--sampleLevel`](#--sampleLevel)
-    * [`--multiqc_config`](#--multiqc_config)
 
 
 ## General Nextflow info
@@ -50,7 +43,7 @@ NXF_OPTS='-Xms1g -Xmx4g'
 ## Running the pipeline
 The typical command for running the pipeline is as follows:
 ```bash
-nextflow run nf-core/lehtio-quant-proteomics --reads '*_R{1,2}.fastq.gz' -profile standard,docker
+nextflow run nf-core/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
 ```
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
@@ -68,13 +61,13 @@ results         # Finished results (configurable, see below)
 When you run the above command, Nextflow automatically pulls the pipeline code from GitHub and stores it as a cached version. When running the pipeline after this, it will always use the cached version if available - even if the pipeline has been updated since. To make sure that you're running the latest version of the pipeline, make sure that you regularly update the cached version of the pipeline:
 
 ```bash
-nextflow pull nf-core/lehtio-quant-proteomics
+nextflow pull nf-core/ddamsproteomics
 ```
 
 ### Reproducibility
 It's a good idea to specify a pipeline version when running the pipeline on your data. This ensures that a specific version of the pipeline code and software are used when you run your pipeline. If you keep using the same tag, you'll be running the same version of the pipeline, even if there have been changes to the code since.
 
-First, go to the [nf-core/lehtio-quant-proteomics releases page](https://github.com/nf-core/lehtio-quant-proteomics/releases) and find the latest version number - numeric only (eg. `1.3.1`). Then specify this when running the pipeline with `-r` (one hyphen) - eg. `-r 1.3.1`.
+First, go to the [nf-core/ddamsproteomics releases page](https://github.com/nf-core/ddamsproteomics/releases) and find the latest version number - numeric only (eg. `1.3.1`). Then specify this when running the pipeline with `-r` (one hyphen) - eg. `-r 1.3.1`.
 
 This version number will be logged in reports when you run the pipeline, so that you'll know what you used when you look back in the future.
 
@@ -89,7 +82,7 @@ Use this parameter to choose a configuration profile. Profiles can give configur
     * Runs locally and expects all software to be installed and available on the `PATH`.
 * `docker`
     * A generic configuration profile to be used with [Docker](http://docker.com/)
-    * Pulls software from dockerhub: [`nfcore/lehtio-quant-proteomics`](http://hub.docker.com/r/nfcore/lehtio-quant-proteomics/)
+    * Pulls software from dockerhub: [`nfcore/ddamsproteomics`](http://hub.docker.com/r/nfcore/ddamsproteomics/)
 * `singularity`
     * A generic configuration profile to be used with [Singularity](http://singularity.lbl.gov/)
     * Pulls software from singularity-hub
@@ -104,72 +97,42 @@ Use this parameter to choose a configuration profile. Profiles can give configur
 * `none`
     * No configuration at all. Useful if you want to build your own config from scratch and want to avoid loading in the default `base` config profile (not recommended).
 
-### `--reads`
-Use this to specify the location of your input FastQ files. For example:
+### `--mzmls`
+Use this to specify the location of your input mzML files. For example:
 
 ```bash
---reads 'path/to/data/sample_*_{1,2}.fastq'
+--mzML 'path/to/data/sample_*.mzML'
+```
+The path must be enclosed in quotes when using wildcards like `*`
+
+
+### `--mzmldef`
+Alternative to the above --mzml this would pass a text file which contains the mzML specifications.
+```bash
+--mzmldef /path/to/data/mzmls.txt
 ```
 
-Please note the following requirements:
+The file itself is tab-separated without header, contains a single line per mzML file specified as follows:
+`/path/to/file	sample_or_sampleset_name	OPTINAL:fractionation_plate_name	OPTIONAL:fraction_nr`
 
-1. The path must be enclosed in quotes
-2. The path must have at least one `*` wildcard character
-3. When using the pipeline with paired end data, the path must use `{1,2}` notation to specify read pairs.
 
-If left unspecified, a default pattern is used: `data/*{1,2}.fastq.gz`
-
-### `--singleEnd`
-By default, the pipeline expects paired-end data. If you have single-end data, you need to specify `--singleEnd` on the command line when you launch the pipeline. A normal glob pattern, enclosed in quotation marks, can then be used for `--reads`. For example:
+### `--tdb`
+Target database. Decoy databases are created "tryptic-reverse" by the pipeline and searches are against a
+concatenated database (T-TDC)
 
 ```bash
---singleEnd --reads '*.fastq'
+--tdb /path/to/Homo_sapiens.pep.all.fa
 ```
 
-It is not possible to run a mixture of single-end and paired-end files in one run.
 
-
-## Reference Genomes
-
-The pipeline config files come bundled with paths to the illumina iGenomes reference index files. If running with docker or AWS, the configuration is set up to use the [AWS-iGenomes](https://ewels.github.io/AWS-iGenomes/) resource.
-
-### `--genome` (using iGenomes)
-There are 31 different species supported in the iGenomes references. To run the pipeline, you must specify which to use with the `--genome` flag.
-
-You can find the keys to specify the genomes in the [iGenomes config file](../conf/igenomes.config). Common genomes that are supported are:
-
-* Human
-  * `--genome GRCh37`
-* Mouse
-  * `--genome GRCm38`
-* _Drosophila_
-  * `--genome BDGP6`
-* _S. cerevisiae_
-  * `--genome 'R64-1-1'`
-
-> There are numerous others - check the config file for more.
-
-Note that you can use the same configuration setup to save sets of reference files for your own use, even if they are not part of the iGenomes resource. See the [Nextflow documentation](https://www.nextflow.io/docs/latest/config.html) for instructions on where to save such a file.
-
-The syntax for this reference configuration is as follows:
-
-```nextflow
-params {
-  genomes {
-    'GRCh37' {
-      fasta   = '<path to the genome fasta file>' // Used if no star index given
-    }
-    // Any number of additional genomes, key is used with --genome
-  }
-}
-```
-
-### `--fasta`
-If you prefer, you can specify the full path to your reference genome when you run the pipeline:
+### `--mods`
+Modifications file for MSGF+, contains the peptide modifications allowed by the search engine. Two examples
+can be found in the `assets` folder.
 
 ```bash
---fasta '[path to Fasta reference]'
+--mods /path/to/assets/tmtmods.txt
 ```
+
 
 ## Job Resources
 ### Automatic resubmission
