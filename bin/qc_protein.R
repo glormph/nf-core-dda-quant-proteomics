@@ -107,7 +107,7 @@ if (feattype == 'proteins') {
   covmed = median(feats$Coverage)
   png('coverage')
   plot = ggplot(feats) + geom_histogram(aes(Coverage), bins=50) + theme_bw()
-  plot + geom_label(x=max(ggplot_build(plot)$data[[1]]$x)*0.75, y=max(ggplot_build(plot)$data[[1]]$count)*0.75, label=sprintf('Median: %.3f', covmed))
+  plot = plot + geom_label(x=max(ggplot_build(plot)$data[[1]]$x)*0.75, y=max(ggplot_build(plot)$data[[1]]$count)*0.75, label=sprintf('Median: %.3f', covmed))
   print(plot)
   dev.off()
 }
@@ -121,13 +121,15 @@ if (length(grep('plex', names(feats)))) {
   tmt = melt(feats, id.vars=featcol, measure.vars = tmtcols)
   tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$variable)
   tmt$variable = sub('.*_[a-z].*[0-9]*plex_', '', tmt$variable)
-  png('isobaric', height=(3 * nrsets + 1) * 72)
-  print(ggplot(na.exclude(tmt)) + geom_boxplot(aes(fct_rev(Set), value, fill=fct_rev(variable)), position=position_dodge(width=1)) +
+  outplot = ggplot(na.exclude(tmt)) + geom_boxplot(aes(fct_rev(Set), value, fill=fct_rev(variable)), position=position_dodge(width=1)) +
     coord_flip() + ylab('Fold change') + xlab('Channels') + theme_bw() + 
     theme(axis.title=element_text(size=30), axis.text=element_text(size=20), plot.title=element_text(size=30) ) + 
     theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()) +
-    ggtitle(paste('Overlap with values in \nall ', length(tmtcols), 'channels: ', overlap)))
-    dev.off()
+    ggtitle(paste('Overlap with values in \nall ', length(tmtcols), 'channels: ', overlap))
+  if (min(na.exclude(tmt$value)) >= 0) { outplot = outplot + scale_y_log10() }
+  png('isobaric', height=(3 * nrsets + 1) * 72)
+  print(outplot)
+  dev.off()
 }
 
 
@@ -164,9 +166,12 @@ if (length(grep('plex', names(feats)))) {
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
+  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable) # this is enough for DEqMS pipeline
+  # but need also following line for normal pipe bc nr-psms values are reported per channel
+  nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$Set)
   feats_in_set = aggregate(value~Set, data=nrpsms, length) 
   feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
+  print(head(feats_in_set))
   png('percentage_onepsm')
   print(ggplot(feats_in_set, aes(Set, percent_single)) +
     geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +

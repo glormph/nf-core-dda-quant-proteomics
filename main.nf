@@ -127,6 +127,7 @@ if (!(params.noquant) && params.isobaric) {
 }
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
 normalize = (!params.noquant && params.normalize && params.isobaric)
+rawisoquant = (!params.noquant && !params.normalize && params.isobaric)
 
 
 // AWSBatch sanity checking
@@ -170,7 +171,7 @@ summary['Modifications'] = params.mods
 summary['Instrument'] = params.instrument
 summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
-summary['Isobaric median normalization'] = params.normalize
+summary['Isobaric normalization'] = params.normalize
 summary['Output genes'] = params.genes
 summary['Output symbols'] = params.symbols
 summary['Custom FASTA delimiter'] = params.fastadelim 
@@ -648,7 +649,7 @@ process psm2Peptides {
 
   script:
   col = accolmap.peptides + 1  // psm2pep adds a column
-  isoquant = !params.noquant && params.isobaric && td == 'target'
+  isoquant = rawisoquant && td == 'target'
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
   msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
@@ -659,11 +660,8 @@ process psm2Peptides {
   tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> proteins
   tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> genes
   tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> symbols
-  ## Do isobaric quantification if necessary
-  #${normalize && td == 'target' ? "msspsmtable isoratio -i psms -o proteinratios --protcol ${accolmap.proteins} --targettable proteins --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : 'touch proteinratios'}
-  #${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
-  #${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
-
+  ${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}
+  ${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
   # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
   """
@@ -713,17 +711,18 @@ process prepProteinGeneSymbolTable {
   set val(setname), val(acctype), val(td), file('bestpeptides') into bestpep
 
   script:
-  if (!params.noquant && params.isobaric && td == 'target')
+  if (td == 'target')
   """
-  mssprottable ms1quant -i proteins -o protms1 --psmtable psms --protcol ${accolmap[acctype]}
-  mssprottable bestpeptide -i protms1 -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
+  ${!params.noquant ? "mssprottable ms1quant -i proteins -o protms1 --psmtable psms --protcol ${accolmap[acctype]}" : 'mv proteins protms1'}
+  ${rawisoquant ? "msspsmtable isoratio -i psms -o proteintable --protcol ${accolmap[acctype]} --targettable protms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}": 'mv protms1 proteintable'}
+  mssprottable bestpeptide -i proteintable -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
   """
   else
   """
-  ${td == 'target' && !params.noquant ? "mssprottable ms1quant -i proteins -o proteintable --psmtable psms --protcol ${accolmap[acctype]}" : 'mv proteins proteintable'}
-  mssprottable bestpeptide -i proteintable -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
+  mssprottable bestpeptide -i proteins -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
   """
 }
+
 
 tbestpep = Channel.create()
 dbestpep = Channel.create()
@@ -762,22 +761,21 @@ peptides_out
   .concat(protfdrout)
   .set { features_out }
 
-// FIXME only for isobaric quant!
 deqms_psms
   .filter { it[0] == 'target' }
   .map { it -> [it[1].collect { x -> x.baseName.tokenize('.')[0] }, it[1]] }
   .transpose()
   .cross(features_out)
   .map { it -> it[0] + [it[1][1], it[1][2]] }
-  .view()
-  .set { deqms }
+  .into { feats_out; deqms }
 
 
 process quantifyFeaturesDEqMS {
   input:
   set val(setname), file("psms"), val(acctype), file("features") from deqms
   output:
-  set val(setname), val(acctype), file("${setname}_feats"), file("psmcounts") into quanted_feats
+  set val("${setname}_${acctype}"), file("${setname}_feats"), file("psmcounts") into quanted_feats
+  when: normalize
   
   script:
   """
@@ -795,12 +793,21 @@ process quantifyFeaturesDEqMS {
   """
 }
 
-// FIXME only for isobaric
-quanted_feats
-  .groupTuple(by: 1)
-  .view()
-  .set { ptables_to_merge }
 
+if(normalize) {
+  feats_out
+    .map { it ->  ["${it[0]}_${it[2]}".toString()] + it }
+    .join(quanted_feats)
+    .groupTuple(by: 3)  // all outputs of same accession type together.
+    .map { it -> [it[1], it[3], it[5], it[6]] }
+    .set { ptables_to_merge }
+} else {
+  feats_out
+    .map { it -> [it[0], it[2], it[3]] } // setname, accession type, feature table
+    .groupTuple(by: 1) // collect all tables for same feature
+    .view()
+    .set { ptables_to_merge }
+}
 
 psmlookup
   .filter { it[0] == 'target' }
@@ -826,20 +833,28 @@ process proteinPeptideSetMerge {
 
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
+  if (normalize)
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  #for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psms ; done >> tmpheader
   msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
   ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o mergedtable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
-  #sed -i 's/\\#/Amount/g' proteintable
-  # FIXME join psm count tables
+  # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
   for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psm_count ; done >> tmpheader
   tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/' > header  # sed to sub trailing tab for a newline
+  # then join the table content
   tail -n+2 mergedtable | sort -k1b,1 > joined
   for count in \$(seq 1 ${setnames.toList().size}); do join -a1 -o auto -e 'NA' -t \$'\\t' joined <(sort -k1b,1 psmcounts"\$count" ) >> joined_tmp; mv joined_tmp joined; done
+  # finally put header on content
   cat header joined > proteintable
+  """
+  else
+  """
+  cat $lookup > db.sqlite
+  msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
+  ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o proteintable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
+  ${!params.noquant && params.isobaric ? "sed -i 's/\\ \\-\\ \\#\\ quanted\\ PSMs/_quanted_psm_count/g' proteintable" : ''}
   """
 }
 
@@ -886,7 +901,6 @@ featqc_getpeptable
 featuretables
   .merge(setnames_featqc)
   .combine(featqc_peptides)
-  .view()
   .set { featqcinput }
 
 
