@@ -83,6 +83,7 @@ params.plaintext_email = false
 
 params.martmap = false
 params.isobaric = false
+params.instrument = 'qe' // Default instrument is Q-Exactive
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
@@ -98,15 +99,13 @@ params.onlypeptides = false
 params.noquant = false
 
 // Validate and set file inputs
-fractionation = params.hirief || params.fractions ? true : false
+fractionation = (params.hirief || params.fractions)
 mods = file(params.mods)
 if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
 tdb = file(params.tdb)
 if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
-// file templates
-hkconf = file("$baseDir/assets/hardklor.conf")
-
+// Files which are not standard can be checked here
 if (params.martmap) {
   martmap = file(params.martmap)
   if( !martmap.exists() ) exit 1, "Biomart ENSEMBL mapping file not found: ${params.martmap}"
@@ -117,20 +116,17 @@ if (params.pipep) {
 }
 output_docs = file("$baseDir/docs/output.md")
 
-// Parse input variables values
+// set constant variables
 accolmap = [peptides: 12, proteins: 14, genes: 17, assoc: 18]
+
+
+// parse inputs that combine to form values or are otherwise more complex.
 setdenoms = [:]
 if (!(params.noquant) && params.isobaric) {
   params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
 }
-normalize = (params.normalize && params.isobaric) ? true: false
-activations = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation']
-activationtype = activations[params.activation]
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
-massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
-msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
-instrument = params.instrument ? params.instrument : 'qe'
-msgfinstrument = [velos:1, qe:3, false:0][instrument]
+normalize = (!params.noquant && params.normalize && params.isobaric)
 
 
 // AWSBatch sanity checking
@@ -171,6 +167,7 @@ summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
 summary['Modifications'] = params.mods
+summary['Instrument'] = params.instrument
 summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
 summary['Isobaric median normalization'] = params.normalize
@@ -238,6 +235,13 @@ process get_software_versions {
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
+    msgf_plus | head -n1 > v_msgf.txt
+    hardklor | head -n1 > v_hk.txt || true
+    kronik | head -n2 > v_kr.txt
+    percolator -h |& head -n1 > v_perco.txt || true
+    msspsmtable --version > v_mss.txt
+    source activate openms-2.4.0
+    IsobaricAnalyzer |& grep Version > v_openms.txt || true
     scrape_software_versions.py > software_versions_mqc.yaml
     """
 }
@@ -260,45 +264,56 @@ else if (!params.mzmldef) {
     .set { mzml_in }
 }
 
+
+// Parse mzML input to get files and sample names etc
+// get setname, sample name (baseName), input mzML file. 
+// Set platename to samplename if not specified. 
+// Set fraction name to NA if not specified
 mzml_in
-  .tap { sets }
-  .map { it -> [file(it[0]), it[1], it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]} // create file, set plate to setname, and fraction to NA if there is none
-  .tap { strips }
-  .map { it -> [it[1], it[0].baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), it[0], it[2], it[3]] }
-  .tap{ mzmlfiles; mzml_isobaric; mzml_hklor; mzml_msgf }
+  .map { it -> [it[1], file(it[0]).baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), file(it[0]), it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]}
+  .tap{ sets; strips; mzmlfiles; mzml_isobaric; mzml_quant; mzml_msgf }
   .count()
   .set{ amount_mzml }
 
+// Set names are first item in input lists, collect them for PSM tables and QC purposes
 sets
-  .map{ it -> it[1] }
+  .map{ it -> it[0] }
   .unique()
   .tap { setnames_psm } 
   .collect()
   .map { it -> [it] }
   .into { setnames_featqc; setnames_psmqc }
 
+// Strip names for HiRIEF fractionation are third item, 
 strips
-  .map { it -> it[2] }
+  .map { it -> it[3] }
   .unique()
   .toList()
   .set { strips_for_deltapi }
 
 
-process hardklor_kronik {
+/*
+* Step 1: Extract quant data from peptide spectra
+*/
+
+process quantifySpectra {
   when: !params.quantlookup && !params.noquant
 
   input:
-  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_hklor
-  file hkconf
+  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_quant
+  file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
   set val(sample), file("${sample}.kr"), file(infile) into kronik_out
   set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
 
+  script:
+  activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   """
-  cp $hkconf config
-  echo "$infile" hardklor.out >> config
-  hardklor config
+  # Run hardklor on config file with added line for in/out files
+  # then run kronik on hardklor and quant isobaric labels if necessary
+  hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
   kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
   source activate openms-2.4.0
   ${params.isobaric ? "IsobaricAnalyzer  -type $params.isobaric -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
@@ -306,6 +321,7 @@ process hardklor_kronik {
 }
 
 
+// Collect all mzMLs into single item to pass to lookup builder and spectra counter
 mzmlfiles
   .buffer(size: amount_mzml.value)
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
@@ -330,14 +346,15 @@ process createSpectraLookup {
 }
 
 
-isoquant_amount = params.isobaric ? amount_mzml.value : 1
+// Collect all isobaric quant XML output for quant lookup building process
 isobaricxml
   .ifEmpty(['NA', 'NA', 'NA'])
-  .buffer(size: isoquant_amount)
+  .buffer(size: params.isobaric ? amount_mzml.value : 1)
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }] } // samples, isoxml
   .set { isofiles_sets }
 
+// Collect all MS1 kronik output for quant lookup building process
 kronik_out
   .ifEmpty(['NA', 'NA'])
   .buffer(size: amount_mzml.value)
@@ -346,6 +363,8 @@ kronik_out
   .set { krfiles_sets }
 
 
+// Need to populate channels depending on if a pre-made quant lookup has been passed
+// even if not needing quant (--noquant) this is necessary or NF will error
 if (params.noquant && !params.quantlookup) {
   newspeclookup
     .into { quant_lookup; spec_lookup; countlookup }
@@ -376,13 +395,15 @@ process quantLookup {
   script:
   if (params.isobaric)
   """
-  cp $lookup db.sqlite
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
   msslookup ms1quant --dbfile db.sqlite -i ${krfns.join(' ')} --spectra ${mzmls.join(' ')} --quanttype kronik --mztol 20.0 --mztoltype ppm --rttol 5.0 
   msslookup isoquant --dbfile db.sqlite -i ${isofns.join(' ')} --spectra ${isosamples.collect{ x -> x + '.mzML' }.join(' ')}
   """
   else
   """
-  cp $lookup db.sqlite
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
   msslookup ms1quant --dbfile db.sqlite -i ${krfns.join(' ')} --spectra ${mzmls.join(' ')} --quanttype kronik --mztol 20.0 --mztoltype ppm --rttol 5.0 
   """
 }
@@ -454,6 +475,10 @@ if (fractionation) {
   scans_perplate.set { scans_result }
 }
 
+/*
+* Step 2: Identify peptides
+*/
+
 process createTargetDecoyFasta {
  
   input:
@@ -461,7 +486,7 @@ process createTargetDecoyFasta {
 
   output:
   file('db.fa') into concatdb
-  set file(tdb), file("decoy_${tdb}") into searchdbs
+  set file(tdb), file("decoy_${tdb}") into searchdbs 
 
   script:
   """
@@ -482,6 +507,9 @@ process msgfPlus {
   set val(setname), val(sample), file("${sample}.mzid") into mzids
   set val(setname), file("${sample}.mzid"), file('out.mzid.tsv'), val(platename), val(fraction) into mzidtsvs
   
+  script:
+  msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
+  msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
   """
   msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread 12 -mod $mods -tda 0 -t 10.0ppm -ti -1,2 -m 0 -inst ${msgfinstrument} -e 1 -protocol ${msgfprotocol} -ntt 2 -minLength 7 -maxLength 50 -minCharge 2 -maxCharge 6 -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.mzid.tsv
@@ -533,12 +561,14 @@ process svmToTSV {
   """
 }
 
+// Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
   .concat(dmzidtsv_perco)
   .groupTuple(by: 1)
   .combine(quant_lookup)
   .set { prepsm }
 
+// Set strips to false if not running hirief
 if (params.hirief) {
   strips_for_deltapi
     .map { it -> [it, trainingpep] }
@@ -548,6 +578,11 @@ if (params.hirief) {
     .map { it -> [it, false, false]}
     .set { stripannot }
 }
+
+
+/*
+* Step 3: Post-process peptide identification data
+*/
 
 process createPSMTable {
 
@@ -559,35 +594,36 @@ process createPSMTable {
   set val(allstrips), file(trainingpep) from stripannot
 
   output:
-  set val(td), file("${td}_psmtable.txt") into psm_result
+  set val(td), file("${outpsms}") into psm_result
   set val(td), file({setnames.collect() { it + '.tsv' }}) into setpsmtables
-  set val(td), file("${td}_psmlookup.sql") into psmlookup
+  set val(td), file("${psmlookup}") into psmlookup
 
   script:
+  psmlookup = "${td}_psmlookup.sql"
+  outpsms = "${td}_psmtable.txt"
   """
   msspsmtable merge -i psms* -o psms.txt
   msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'PSM q-value'
   msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'peptide q-value'
-  cp lookup psmlookup
-  msslookup psms -i filtpep --dbfile psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? tdb : "${ddb} --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
-  msspsmtable specdata -i filtpep --dbfile psmlookup -o prepsms.txt
-  ${!params.noquant ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile psmlookup --precursor ${params.isobaric && td=='target' ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat lookup > $psmlookup
+  msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? tdb : "${ddb} --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
+  msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt
+  ${!params.noquant ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric && td=='target' ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
   sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
-  ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile psmlookup" : ''}
-  ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile psmlookup" : ''}
-  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o pgpsms --dbfile psmlookup" : 'mv qpsms.txt pgpsms'}
-  ${params.hirief ? "peptide_pi_annotator.py -i $trainingpep -p pgpsms --o dppsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --strippatterns ${allstrips.join(' ')} --intercepts ${allstrips.collect() { params.strips[it].intercept}.join(' ')} --widths ${allstrips.collect() { params.strips[it].fr_width}.join(' ')} --ignoremods \'*\'" : ''}
-  msspsmtable split -i ${params.hirief ? 'dppsms' : 'pgpsms'} --bioset
-  mv ${params.hirief ? 'dppsms' : 'pgpsms'} ${td}_psmtable.txt
-  mv psmlookup ${td}_psmlookup.sql
+  ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
+  ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile $psmlookup" : ''}
+  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o ${params.hirief ? "pgpsms" : "$outpsms"} --dbfile $psmlookup" : 'mv qpsms.txt pgpsms'}
+  ${params.hirief ? "peptide_pi_annotator.py -i $trainingpep -p pgpsms --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --strippatterns ${allstrips.join(' ')} --intercepts ${allstrips.collect() { params.strips[it].intercept}.join(' ')} --widths ${allstrips.collect() { params.strips[it].fr_width}.join(' ')} --ignoremods \'*\'" : ''}
+  msspsmtable split -i ${outpsms} --bioset
   """
 }
 
+// Collect setnames and merge with PSM tables for peptide table creation
 setnames_psm
   .toList()
   .map { it -> [it.sort()]}
   .set { setlist_psm }
-
 setpsmtables
   .map { it -> [it[0], it[1] instanceof java.util.List ? it[1] : [it[1]] ] }
   .map{ it -> [it[0], it[1].sort { a, b -> a.baseName.tokenize('.')[0] <=> b.baseName.tokenize('.')[0] }] } // names are setnames, sort on them then merge with sorted setnames
@@ -612,21 +648,30 @@ process psm2Peptides {
 
   script:
   col = accolmap.peptides + 1  // psm2pep adds a column
+  isoquant = !params.noquant && params.isobaric && td == 'target'
   """
+  # Create peptide table from PSM table, picking best scoring unique peptides
   msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
+  # Move peptide sequence to first column
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
+  # Create empty protein/gene/gene-symbol tables with only the identified accessions, will be filled later
   echo Protein accession |tee proteins genes symbols
   tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> proteins
   tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> genes
   tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'|grep -v "^\$"|sort|uniq >> symbols
+  # Do isobaric quantification if necessary
   ${normalize && td == 'target' ? "msspsmtable isoratio -i psms -o proteinratios --protcol ${accolmap.proteins} --targettable proteins --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : 'touch proteinratios'}
-  ${!params.noquant && params.isobaric && td == 'target' ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
-  ${!params.noquant && params.isobaric && td == 'target' ?  "mv pepisoquant peptide_table.txt" : ''}
+  ${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')} ${normalize ? '--normalize median --norm-ratios proteinratios' : ''} > normratiosused" : ''}
+  ${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
+  # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
   """
 }
 
 
+// Different amount of processes depending on genes and gene symbols are desired
+// Input for proteins, genes and symbols is identical at this stage so tap and concat
+// onto itself.
 if (params.genes && params.symbols) { 
   pepslinmod
     .tap { pepsg; pepss }
@@ -651,6 +696,10 @@ if (params.genes && params.symbols) {
     .set { prepgs_in }
 }
 
+
+/*
+* Step 4: Infer and quantify proteins and genes
+*/
 
 process prepProteinGeneSymbolTable {
 
@@ -705,6 +754,7 @@ process proteinFDR {
   """
 }
 
+// Prepare for set-tables merging into a side-by-side table
 peptides_out
   .filter { it[2] == 'target' }
   .map { it -> [it[0], it[1], it[3]] }
@@ -727,6 +777,10 @@ psmlookup
   .map { it[1] }
   .set { tlookup }
 
+/*
+* Step 5: Create reports
+*/
+
 process proteinPeptideSetMerge {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: { it == "proteintable" ? "${outname}_table.txt": null}
@@ -742,7 +796,8 @@ process proteinPeptideSetMerge {
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
-  cp $lookup db.sqlite
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
   msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--psmnrcolpattern quanted --isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
   ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o proteintable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
   sed -i 's/\\#/Amount/g' proteintable
@@ -866,6 +921,7 @@ process output_documentation {
     markdown_to_html.r $output_docs results_description.html
     """
 }
+
 
 
 /*
