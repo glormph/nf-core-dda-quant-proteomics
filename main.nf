@@ -497,6 +497,7 @@ process createTargetDecoyFasta {
 
 
 process msgfPlus {
+  cpus = 4
 
   input:
   set val(setname), val(sample), file(x), val(platename), val(fraction) from mzml_msgf
