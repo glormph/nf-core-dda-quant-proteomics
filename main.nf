@@ -817,7 +817,7 @@ process psmQC {
   set val(td), file('psms'), file('scans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
   output:
-  set val('psms'), file('psmqc.html') into psmqccollect
+  set val('psms'), file('psmqc.html'), file('summary.txt') into psmqccollect
   val(plates) into qcplates
   // TODO no proteins == no coverage for pep centric
   script:
@@ -862,7 +862,7 @@ process featQC {
   set val(acctype), file('feats'), val(setnames), file(peptable) from featqcinput
   set val(setnames), file('norm?') from allsetnormratios
   output:
-  set val(acctype), file('featqc.html') into qccollect
+  set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
   """
@@ -874,13 +874,32 @@ process featQC {
     [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
     done 
   echo "</body></html>" >> featqc.html
+  ${acctype == 'peptides' ? 'touch summary.txt' : ''}
+
+  qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n _q-value| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
+  protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | cut -f1 -d ':')
+  echo protcol is \$protcol
+  ${acctype == 'peptides' ? 'cut -f1,"\$qcols","\$protcol" feats | grep -v ";" > tmpqvals' : 'cut -f1,"\$qcols" feats > qvals'}
+  ${acctype == 'peptides' ? 'nonprotcol=\$(head -n1 tmpqvals | tr "\\t" "\\n" |grep -vn Protein | cut -f1 -d":" | tr "\\n" "," | sed "s/\\,\$//") && cut -f"\$nonprotcol" tmpqvals > qvals' : ''}
+  nrsets=\$(wc -l nrsets | sed 's/\\ .*//')
+  echo Nrsets is \$nrsets
+  # read lines, sed removes all non-A chars so only N from NA is left.
+  while read line ; do 
+  	nr=\$(printf "\$line" |wc -m)  # Count NA
+  	overlap=\$(( \$nrsets-\$nr )) # nrsets minus NAcount is the overlap
+  	echo "\$overlap" >> setcount
+  done < <(tail -n+2 qvals | cut -f2- | sed 's/[^A]//g' )
+  echo nr_sets\$'\t'nr_${acctype} > overlap
+  for num in \$(seq 1 \$nrsets); do 
+  	echo "\$num"\$'\t'\$( grep ^"\$num"\$ setcount | wc -l) >> overlap
+  done
   """
 }
 
 qccollect
   .concat(psmqccollect)
   .toList()
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }] }
+  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }, it.collect() { it[3] }] }
   .set { collected_feats_qc }
 
 
@@ -889,16 +908,25 @@ process collectQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  set val(acctypes), file('feat?') from collected_feats_qc
+  set val(acctypes), file('feat?'), file('summary?'), file('overlap?') from collected_feats_qc
   val(plates) from qcplates
 
   output:
-  file('qc.html')
+  set file('qc_light.html'), file('qc_full.html')
 
   script:
   """
-  count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; ((count++)); done
-  qc_collect.py $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
+  count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; mv summary\$count \${ac}_summary; mv overlap\$count \${ac}_overlap; ((count++)); done
+  # FIXME make this optional if no genes, no proteins
+  join -j 1 -o auto -t '\t' <(sort -k1b,1 psms_summary) <(sort -k1b,1 peptides_summary) > psmpepsum
+  ${params.onlypeptides ? 'tee < psmpepsum > summary pre_summary_light' : 'join -j 1 -o auto -t \'\t\' psmpepsum <(sort -k1b,1 proteins_summary) > pepprotsum'}
+
+  ${params.genes ?  'join -j 1 -o auto -t \'\t\' pepprotsum <( sort -k1b,1 genes_summary) > summary' : "${!params.onlypeptides ? 'tee < pepprotsum > summary pre_summary_light' : "awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$3,\$2}' pre_summary_light > summary_light"}"}
+
+  ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum <( sort -k1b,1 genes_summary) > pre_summary_light' : ''}
+  awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$5,\$3,\$4,\$2,\$7}' pre_summary_light > summary_light
+  qc_collect.py $baseDir/assets/qc_full.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_light.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
   """
 }
 

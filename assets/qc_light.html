@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+{% macro table(table) -%}
+<table class="table is-striped is-narrow is-hoverable">
+<thead>
+<tr>
+{% for field in table['_fields'] %}
+<th>{{ tablefields[field] }}</th>
+{% endfor %}
+</tr>
+</thead>
+<tbody>
+{% for sampleset in table['_rows'] %}
+<tr>
+{% for field in table['_fields'] %}
+<td>{{ table['_rows'][sampleset][field] }}</td>
+{% endfor %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{%- endmacro %}
+
+<html lang="en">
+<head>
+    <title>Lehtio proteomics QC report</title>
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.6.2/css/bulma.min.css">
+</head>
+<body>
+<div class="container">
+  <h2 class="title is-2">QC for {{ searchname }}</h2>
+  <hr>
+  <h3 class="title is-3">Protein/peptide level QC</h3>
+  <h4 class="title is-4">Summary</h4>
+  {{ table(sumtable) }}
+  <hr>
+  <h4 class="title is-4">Overlap</h4>
+  <div class="columns">
+  {% for feat in overlap %}
+  <div class="column">
+  <h5 class="title is-5">{{ featnames[feat] }}</h5>
+  {{ table(overlap[feat]) }}
+  </div>
+  {% endfor %}
+  </div>
+  <hr>
+
+{% for graphtype in ["featyield", "isobaric"] %}
+  {% if graphtype in features['peptides'] or ('proteins' in features and graphtype in features['proteins']) %}
+  <h4 class="title is-4">{{ titles[graphtype] }}</h4>
+  <div class="columns">
+    {% for feat in features %}
+    <div class="column">
+      <h5 class="title is-5">{{ featnames[feat] }}</h5>
+      {{ features[feat][graphtype] }}
+    </div>
+    {% endfor %}
+    {% if graphtype == "isobaric" and 'normfac' in features['proteins'] %}
+    <div class="column">
+      <h5 class="title is-5">Median centering</h5>
+        {{ features['proteins']['normfac']}}
+    </div>
+    {% endif %}
+  </div>
+<hr>
+{% endif %}
+{% endfor %}
+</div>
+</body>
+</html>

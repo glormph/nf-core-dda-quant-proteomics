@@ -25,10 +25,13 @@ if (has_fractions) {
 idcols = c(xcol, ycol)
 
 amount_psms = aggregate(SpecID~get(xcol), feats, length)
+set_amount_psms = aggregate(SpecID~Biological.set, feats, length)
 names(amount_ms2) = idcols
 names(amount_psms) = idcols
 amount_ms2$count = 'MS2 scans'
 amount_psms$count = 'PSMs IDed'
+names(set_amount_psms) = c('Set', 'psmcount')
+write.table(set_amount_psms, 'summary.txt', row.names=F, quote=F, sep='\t')
 amount_id = rbind(amount_psms, amount_ms2)
 amount_id$count = as.factor(amount_id$count)
 procents = dcast(amount_id, get(xcol)~count, value.var='amount')
@@ -91,6 +94,9 @@ for (plateid in plateids) {
     } else {
       plotdata = subfeats
       p = ggplot(plotdata, aes_string(x=xcol, y=ptypes[[ptype]][1])) + geom_violin(trim=F) 
+    }
+    if (ptype == 'precerror') {
+      p = p + geom_hline(yintercept=0, size=2)
     }
     png(fn, height=h, width=w)
     p = p + ylab(ptypes[[ptype]][2]) + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20))

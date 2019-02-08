@@ -15,46 +15,73 @@ if(length(args) == 4) {
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
 # featyield
+# summary table: 
+  # PROT/GENE:
+  # DONE OK median # unique peptides / protein 
+  # DONE OK median # unique peptides / protein (gene)
+  # DONE OK # proteins
+  # DONE OK # proteins (gene)
+  # median # PSMs for quant used
+  # PEP:
+  # DONE and check # unique peptides -> unique for protein?
+  # PSM
+  # # PSMs total
+  # Make prot/gene optional!
+
 qcols = colnames(feats)[grep('_q.value', colnames(feats))]
 overlap = na.exclude(feats[qcols])
-overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
 if (feattype == 'peptides') {
+  overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
   featcol = 'Peptide.sequence'
   am_prots = melt(feats, id.vars=c(featcol, "Protein.s."), measure.vars=qcols)
   am_prots$nrprots = lengths(regmatches(am_prots$Protein.s., gregexpr(';', am_prots$Protein.s.))) + 1
+  # aggregate feats and remove col with ; where?
 } else {
+  overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
   featcol = 'Protein.accession'  
   am_prots = melt(feats, id.vars=featcol, measure.vars=qcols)
+  pepcols = colnames(feats)[grep('Amount.Unique', colnames(feats))]
+  pepprots = melt(feats, id.vars=featcol, measure.vars=pepcols)
+  pepprots$variable = sub('_Amount.Unique.peptides', '', pepprots$variable)
+  pepmed = aggregate(value~variable, pepprots, median)
+  colnames(pepmed) = c('Set', paste('no_pep_', feattype, sep=''))
 }
 am_prots = am_prots[!is.na(am_prots$value),]
 am_prots = am_prots[am_prots$value < 0.01,]
 am_prots$Set = sub('_q.value', '', am_prots$variable)
 png('featyield', height=(nrsets + 2) * 72)
 if (feattype == 'peptides') {
-  pepprotnr = aggregate(nrprots ~ Set, subset(am_prots, nrprots == 1), length)
+  totalunique = length(unique(subset(am_prots, nrprots == 1)$Peptide.sequence))
+  unipepprotnr = aggregate(nrprots ~ Set, subset(am_prots, nrprots == 1), length)
   am_prots = aggregate(Peptide.sequence ~ Set, am_prots, length)
-  am_prots = merge(am_prots, pepprotnr)
+  am_prots = merge(am_prots, unipepprotnr)
   names(am_prots) = c('Set', 'All', 'Non-shared (unique)')
+  write.table(am_prots[,c(1,3)], 'summary.txt', row.names=F, quote=F, sep='\t')
   am_prots = melt(am_prots)
   colnames(am_prots)[3] = 'accession'
   print(ggplot(am_prots) +
     coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), legend.text=element_text(size=20), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=30)) +
     geom_bar(aes(fct_rev(Set), y=accession, fill=variable), stat='identity', position='dodge') +
-    geom_text(data=subset(am_prots, variable=='All'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=-0.25) + ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal identified: ', dim(feats)[1])))
+    geom_text(data=subset(am_prots, variable=='All'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=-0.25) + 
+    geom_text(data=subset(am_prots, variable=='Non-shared (unique)'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=+0.25) + 
+    ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique)))
 } else {
   am_prots = aggregate(Protein.accession ~ Set, am_prots, length)
+  summary = merge(pepmed, am_prots, by='Set', all.y=T)
+  colnames(summary)[ncol(summary)] = paste('nr_', feattype, sep='')
+  summary[is.na(summary)] = 0
+  write.table(summary, 'summary.txt', row.names=F, quote=F, sep='\t')
   colnames(am_prots)[2] = 'accession'
   print(ggplot(am_prots) +
     coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), plot.title=element_text(size=30)) +
     geom_bar(aes(fct_rev(Set), y=accession), stat='identity') +
-    geom_text(aes(fct_rev(Set), accession/2, label=accession), colour="white", size=10) + ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal identified: ', dim(feats)[1])))
+    geom_text(aes(fct_rev(Set), accession/2, label=accession), colour="white", size=10) + ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal identified: ', nrow(feats))))
 }
 dev.off()
 
 # precursorarea
 if (length(grep('area', names(feats)))) {
     parea = melt(feats, id.vars=featcol, measure.vars = colnames(feats)[grep('area', colnames(feats))])
-    print(head(parea))
     parea$Set = sub('_MS1.*', '', parea$variable)
     png('precursorarea', height=(nrsets + 1) * 72)
     print(ggplot(parea) + 
@@ -174,7 +201,6 @@ if (feattype != 'peptides') {
   peps = read.table(peptable, header=T, sep='\t', comment.char='', quote='')
   ms1qcols = grep('MS1.area', colnames(peps))
   nrpep_set = melt(peps, id.vars=c("Protein.s."), measure.vars=ms1qcols, na.rm=T)
-  print(dim(nrpep_set), length(nrpep_set))
   if (dim(nrpep_set)[1] != 0) {
     nrpep_set$Set = sub('_MS1.area.*', '', nrpep_set$variable)
     nrpep_set = aggregate(variable~Protein.s.+Set, nrpep_set, length) 
