@@ -57,6 +57,7 @@ if (length(grep('plex', names(feats)))) {
 
 qcols = colnames(feats)[grep('_q.value', colnames(feats))]
 overlap = na.exclude(feats[qcols])
+overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
 if (feattype == 'peptides') {
   am_prots = melt(feats, id.vars=c(featcol, "Protein.s."), measure.vars=qcols)
   am_prots$nrprots = lengths(regmatches(am_prots$Protein.s., gregexpr(';', am_prots$Protein.s.))) + 1

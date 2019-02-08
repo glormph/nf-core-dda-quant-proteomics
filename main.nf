@@ -842,7 +842,7 @@ process proteinPeptideSetMerge {
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
   for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psm_count ; done >> tmpheader
-  tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/' > header  # sed to sub trailing tab for a newline
+  tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/;s/\\#/Amount/g' > header  # sed to sub trailing tab for a newline, and not have pound sign
   # then join the table content
   tail -n+2 mergedtable | sort -k1b,1 > joined
   for count in \$(seq 1 ${setnames.toList().size}); do join -a1 -o auto -e 'NA' -t \$'\\t' joined <(sort -k1b,1 psmcounts"\$count" ) >> joined_tmp; mv joined_tmp joined; done
