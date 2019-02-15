@@ -14,11 +14,7 @@ if(length(args) == 4) {
 }
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
-if (feattype == 'peptides') {
-  featcol = 'Peptide.sequence'
-} else {
-  featcol = 'Protein.accession'  
-}
+featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.ID', assoc='Gene.Name')[[feattype]]
 
 # nrpsms
 if (length(grep('plex', names(feats)))) {
@@ -28,7 +24,7 @@ if (length(grep('plex', names(feats)))) {
   if (feattype == 'peptides') {
     nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
   } else {
-    nrpsms = aggregate(value~Protein.accession+Set, nrpsms, max)
+    nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
   }
   nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
   png('nrpsms')
@@ -90,7 +86,7 @@ if (feattype == 'peptides') {
     geom_text(data=subset(am_prots, variable=='Non-shared (unique)'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=+0.25) + 
     ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique)))
 } else {
-  am_prots = aggregate(Protein.accession ~ Set, am_prots, length)
+  am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
   summary = merge(pepmed, am_prots, by='Set', all.y=T)
   colnames(summary)[ncol(summary)] = paste('nr_', feattype, sep='')
   summary[is.na(summary)] = 0
@@ -146,7 +142,7 @@ if (length(grep('plex', names(feats)))) {
   if (feattype == 'peptides') {
     nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
   } else {
-    nrpsms = aggregate(value~Protein.accession+Set, nrpsms, max)
+    nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
   }
   nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
   png('nrpsmsoverlapping')
