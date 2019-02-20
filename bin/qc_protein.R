@@ -21,11 +21,9 @@ if (length(grep('plex', names(feats)))) {
   nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
   nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
-  if (feattype == 'peptides') {
-    nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
-  } else {
-    nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
-  }
+  summary_psms = aggregate(value~Set, nrpsms, median)
+  colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
+  nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
   nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
   png('nrpsms')
   print(ggplot(nrpsms, aes(y=value, x=setrank)) +
@@ -66,8 +64,7 @@ if (feattype == 'peptides') {
   pepmed = aggregate(value~variable, pepprots, median)
   colnames(pepmed) = c('Set', paste('no_pep_', feattype, sep=''))
 }
-am_prots = am_prots[!is.na(am_prots$value),]
-am_prots = am_prots[am_prots$value < 0.01,]
+am_prots = am_prots[!is.na(am_prots$value) | am_prots$value < 0.01,]
 am_prots$Set = sub('_q.value', '', am_prots$variable)
 png('featyield', height=(nrsets + 2) * 72)
 if (feattype == 'peptides') {
@@ -86,11 +83,25 @@ if (feattype == 'peptides') {
     geom_text(data=subset(am_prots, variable=='Non-shared (unique)'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=+0.25) + 
     ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique)))
 } else {
-  am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
-  summary = merge(pepmed, am_prots, by='Set', all.y=T)
-  colnames(summary)[ncol(summary)] = paste('nr_', feattype, sep='')
+  if (length(grep('plex', names(feats)))) {
+    # if isobaric, then show summary table of feats 1%FDR AND quant
+    tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
+    not_fullna = feats[rowSums(is.na(feats[,tmtcols])) != length(tmtcols),]
+    sum_prots = melt(not_fullna, id.vars=featcol, measure.vars=qcols)
+    sum_prots = sum_prots[!is.na(sum_prots$value) | sum_prots$value < 0.01,]
+    sum_prots$Set = sub('_q.value', '', sum_prots$variable)
+    sum_prots = aggregate(get(featcol) ~ Set, sum_prots, length)
+    summary = merge(pepmed, sum_prots, by='Set', all.y=T)
+    colnames(summary)[ncol(summary)] = paste('nr_', feattype, '_q', sep='')
+  } else {
+    # just nr of proteins 1% FDR, no quant
+    summary = merge(pepmed, am_prots, by='Set', all.y=T)
+    colnames(summary)[ncol(summary)] = paste('nr_', feattype, sep='')
+  }
+  summary = merge(summary, summary_psms, by='Set', all.y=T)
   summary[is.na(summary)] = 0
   write.table(summary, 'summary.txt', row.names=F, quote=F, sep='\t')
+  am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
   colnames(am_prots)[2] = 'accession'
   print(ggplot(am_prots) +
     coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), plot.title=element_text(size=30)) +
@@ -111,7 +122,6 @@ if (feattype == 'proteins') {
 
 #isobaric
 if (length(grep('plex', names(feats)))) {
-  qcols = colnames(feats)[grep('_q.value', colnames(feats))]
   tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
@@ -128,7 +138,6 @@ if (length(grep('plex', names(feats)))) {
   print(outplot)
   dev.off()
 }
-
 
 #nrpsmsoverlapping
 if (length(grep('plex', names(feats)))) {
@@ -168,7 +177,6 @@ if (length(grep('plex', names(feats)))) {
   nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$Set)
   feats_in_set = aggregate(value~Set, data=nrpsms, length) 
   feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
-  print(head(feats_in_set))
   png('percentage_onepsm')
   print(ggplot(feats_in_set, aes(Set, percent_single)) +
     geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
