@@ -499,7 +499,7 @@ process createTargetDecoyFasta {
 
 
 process msgfPlus {
-  cpus = 4
+  cpus = config.poolSize < 4 ? config.poolSize : 4
 
   input:
   set val(setname), val(sample), file(x), val(platename), val(fraction) from mzml_msgf
@@ -514,7 +514,7 @@ process msgfPlus {
   msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
   msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
   """
-  msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread 12 -mod $mods -tda 0 -t 10.0ppm -ti -1,2 -m 0 -inst ${msgfinstrument} -e 1 -protocol ${msgfprotocol} -ntt 2 -minLength 7 -maxLength 50 -minCharge 2 -maxCharge 6 -n 1 -addFeatures 1
+  msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread ${cpus * 3} -mod $mods -tda 0 -t 10.0ppm -ti -1,2 -m 0 -inst ${msgfinstrument} -e 1 -protocol ${msgfprotocol} -ntt 2 -minLength 7 -maxLength 50 -minCharge 2 -maxCharge 6 -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.mzid.tsv
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   """
