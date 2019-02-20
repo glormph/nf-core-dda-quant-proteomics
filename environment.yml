@@ -17,4 +17,4 @@ dependencies:
   - conda-forge::r-forcats=0.3.0
   - conda-forge::r-rmarkdown=1.10
   - conda-forge::r-matrixstats=0.54.0
-  - bioconda::bioconductor-deqms
+  - bioconda::bioconductor-deqms=1.0.1
