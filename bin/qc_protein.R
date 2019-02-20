@@ -20,7 +20,8 @@ featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.I
 if (length(grep('plex', names(feats)))) {
   nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
+  nrpsms$Set = sub('_[a-z0-9]*plex_[0-9NC]*_quanted_psm_count', '', nrpsms$variable)
+  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$Set)
   summary_psms = aggregate(value~Set, nrpsms, median)
   colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
   nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
@@ -33,21 +34,6 @@ if (length(grep('plex', names(feats)))) {
     scale_x_reverse())
     dev.off()
 }
-
-
-# featyield
-# summary table: 
-  # PROT/GENE:
-  # DONE OK median # unique peptides / protein 
-  # DONE OK median # unique peptides / protein (gene)
-  # DONE OK # proteins
-  # DONE OK # proteins (gene)
-  # median # PSMs for quant used
-  # PEP:
-  # DONE and check # unique peptides -> unique for protein?
-  # PSM
-  # # PSMs total
-  # Make prot/gene optional!
 
 qcols = colnames(feats)[grep('_q.value', colnames(feats))]
 overlap = na.exclude(feats[qcols])
@@ -64,7 +50,8 @@ if (feattype == 'peptides') {
   pepmed = aggregate(value~variable, pepprots, median)
   colnames(pepmed) = c('Set', paste('no_pep_', feattype, sep=''))
 }
-am_prots = am_prots[!is.na(am_prots$value) | am_prots$value < 0.01,]
+am_prots = am_prots[!is.na(am_prots$value),]
+am_prots = am_prots[am_prots$value < 0.01,]
 am_prots$Set = sub('_q.value', '', am_prots$variable)
 png('featyield', height=(nrsets + 2) * 72)
 if (feattype == 'peptides') {
@@ -88,7 +75,8 @@ if (feattype == 'peptides') {
     tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
     not_fullna = feats[rowSums(is.na(feats[,tmtcols])) != length(tmtcols),]
     sum_prots = melt(not_fullna, id.vars=featcol, measure.vars=qcols)
-    sum_prots = sum_prots[!is.na(sum_prots$value) | sum_prots$value < 0.01,]
+    sum_prots = sum_prots[!is.na(sum_prots$value),]
+    sum_prots = sum_prots[sum_prots$value < 0.01,]
     sum_prots$Set = sub('_q.value', '', sum_prots$variable)
     sum_prots = aggregate(get(featcol) ~ Set, sum_prots, length)
     summary = merge(pepmed, sum_prots, by='Set', all.y=T)
@@ -147,7 +135,8 @@ if (length(grep('plex', names(feats)))) {
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable)
+  nrpsms$Set = sub('_[a-z0-9]*plex_[0-9NC]*_quanted_psm_count', '', nrpsms$variable)
+  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$Set)
   if (feattype == 'peptides') {
     nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
   } else {
@@ -212,4 +201,3 @@ if (length(grep('area', names(feats)))) {
       geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
     dev.off()
 }
-

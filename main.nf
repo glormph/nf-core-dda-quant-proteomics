@@ -857,7 +857,7 @@ process proteinPeptideSetMerge {
   cat $lookup > db.sqlite
   msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
   ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o proteintable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
-  ${!params.noquant && params.isobaric ? "sed -i 's/\\ \\-\\ \\#\\ quanted\\ PSMs/_quanted_psm_count/g' proteintable" : ''}
+  ${!params.noquant && params.isobaric ? "sed -i 's/\\ \\-\\ \\#\\ quanted\\ PSMs/_quanted_psm_count/g;s/\\#/Amount/g' proteintable" : ''}
   """
 }
 
@@ -916,6 +916,7 @@ process featQC {
 
   script:
   """
+  # Create QC plots and put them base64 into HTML, R also creates summary.txt
   qc_protein.R ${setnames.size()} ${acctype} $peptable
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
@@ -925,6 +926,7 @@ process featQC {
   echo "</body></html>" >> featqc.html
   ${acctype == 'peptides' ? 'touch summary.txt' : ''}
 
+  # Create overlap table
   qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n _q-value| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
   protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | cut -f1 -d ':')
   echo protcol is \$protcol
