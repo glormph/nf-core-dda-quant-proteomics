@@ -97,6 +97,7 @@ params.hirief = false
 params.pipep = false
 params.onlypeptides = false
 params.noquant = false
+params.denoms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -122,7 +123,7 @@ accolmap = [peptides: 12, proteins: 14, genes: 17, assoc: 18]
 
 // parse inputs that combine to form values or are otherwise more complex.
 setdenoms = [:]
-if (!(params.noquant) && params.isobaric) {
+if (!(params.noquant) && params.isobaric && params.denoms) {
   params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
 }
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
@@ -785,7 +786,9 @@ process quantifyFeaturesDEqMS {
   channelcols=\$(head -n1 psms | tr '\\t' '\\n' | grep -n plex | cut -f1 -d ':'| tr '\\n' ',' | sed 's/,\$//')
   paste pepacc <(cut -f "\$channelcols" psms) > psmvals
   # run deqMS normalization and summarization, which produces logged ratios
-  deqms.R psmvals features
+
+  ${params.denoms ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : ""}
+  deqms.R psmvals features $setname ${params.denoms ? "\$denomcols" : ''}
   # join feat tables on normalized proteins
   paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
   join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 features | sort -k1b,1 ) <(tail -n+2 normalized_feats | sort -k1b,1) >> feats_quants

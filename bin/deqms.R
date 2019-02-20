@@ -7,6 +7,7 @@ args = commandArgs(trailingOnly=TRUE)
 psms = args[1]
 filtered_features = args[2]
 setname = args[3]
+denomcols = args[4]
 
 psms = read.table(psms, header=T, sep="\t", comment.char="", quote="")
 colnames(psms)[2] = "Feature"
@@ -23,8 +24,16 @@ write.table(countout, 'psmcounts', sep='\t', quote=F, row.names=F, col.names=F)
 rownames(psm.counts) = psm.counts$Var1
 
 # Normalize and filter features against the passed filtered_features table
-proteins.nm = medianSweeping(psms, group_col=2)
-proteins.nm = proteins.nm[rownames(proteins.nm) %in% features[,1], ]
+if (is.na(denomcols)) {
+  print('Median sweeping')
+  proteins.nm = medianSweeping(psms, group_col=2)
+  proteins.nm = proteins.nm[rownames(proteins.nm) %in% features[,1], ]
+} else {
+  print('Median summarizing with denominators')
+  denomcols = as.numeric(strsplit(denomcols, ",")[[1]])
+  proteins = medianSummary(psms, group_col=2, ref_col=denomcols)
+  proteins.nm = equalMedianNormalization(proteins)
+}
 featcol = data.frame(feats=rownames(proteins.nm))
 write.table(cbind(featcol, proteins.nm), 'normalized_feats', sep='\t', quote=F, row.names=F)
 
