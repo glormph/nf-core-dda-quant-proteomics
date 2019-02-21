@@ -968,14 +968,13 @@ process collectQC {
   script:
   """
   count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; mv summary\$count \${ac}_summary; mv overlap\$count \${ac}_overlap; ((count++)); done
-  # FIXME make this optional if no genes, no proteins
   join -j 1 -o auto -t '\t' <(sort -k1b,1 psms_summary) <(sort -k1b,1 peptides_summary) > psmpepsum
   ${params.onlypeptides ? 'tee < psmpepsum > summary pre_summary_light' : 'join -j 1 -o auto -t \'\t\' psmpepsum <(sort -k1b,1 proteins_summary) > pepprotsum'}
 
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' pepprotsum <( sort -k1b,1 genes_summary) > summary' : "${!params.onlypeptides ? 'tee < pepprotsum > summary pre_summary_light' : "awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$3,\$2}' pre_summary_light > summary_light"}"}
 
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum <( sort -k1b,1 genes_summary) > pre_summary_light' : ''}
-  awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$5,\$3,\$4,\$2,\$7}' pre_summary_light > summary_light
+  mv pre_summary_light summary_light
   qc_collect.py $baseDir/assets/qc_full.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
   qc_collect.py $baseDir/assets/qc_light.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
   """

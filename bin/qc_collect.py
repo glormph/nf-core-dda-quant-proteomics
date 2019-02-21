@@ -47,7 +47,7 @@ featnames = {
 # FIXME  use this for ppsms!
 #PSMs/protein for quant (median)
 
-tablefields = {
+tablefieldtitles = {
         'nr_sets': 'IDed in # overlapping sets', 
         'Set': 'Experiment set', 
         'no_pep_proteins': 'Peptides/protein (unique, median)',
@@ -63,6 +63,9 @@ tablefields = {
         'Non-shared (unique)': 'Peptides (unique, 1%FDR)',
         'psmcount': 'PSMs (total)',
         }
+
+field_order = ['Set', 'nr_proteins_q', 'nr_proteins', 'nr_genes_q', 'nr_genes', 'nr_assoc', 'nr_assoc_q', 'Non-shared (unique)', 'no_pep_proteins', 'no_pep_genes', 'psmcount', 'no_psm_proteins', 'no_psm_genes']
+field_order = {x: field_order.index(x) for x in field_order}
 
 graphs = OrderedDict()
 feattypes = {
@@ -81,7 +84,7 @@ def parse_table(fn):
     table = {'_rows': {}}
     with open(fn) as fp:
         header = next(fp).strip('\n').split('\t')
-        table['_fields'] = header
+        table['_fields'] = sorted(header, key=lambda x: field_order[x] if x in field_order else len(field_order)+1)
         for line in fp:
             line = line.strip('\n').split('\t')
             line = {header[x]: line[x] for x in range(0,len(line))}
@@ -102,4 +105,4 @@ if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefields=tablefields, hirief=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, hirief=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs))
