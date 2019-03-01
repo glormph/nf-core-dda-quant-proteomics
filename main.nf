@@ -827,7 +827,7 @@ process proteinPeptideSetMerge {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: { it == "proteintable" ? "${outname}_table.txt": null}
 
   input:
-  set val(setnames), val(acctype), file(tables), file("psmcounts*") from ptables_to_merge
+  set val(setnames), val(acctype), file(tables), file("psmcounts?") from ptables_to_merge
   file(lookup) from tlookup
   
   output:
