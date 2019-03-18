@@ -98,6 +98,7 @@ params.pipep = false
 params.onlypeptides = false
 params.noquant = false
 params.denoms = false
+params.sampletable = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -115,6 +116,10 @@ if (params.pipep) {
   trainingpep = file(params.pipep)
   if( !trainingpep.exists() ) exit 1, "Peptide pI data file not found: ${params.pipep}"
 }
+if (params.sampletable) {
+  sampletable = file(params.sampletable)
+  if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
+}
 output_docs = file("$baseDir/docs/output.md")
 
 // set constant variables
@@ -126,6 +131,11 @@ setdenoms = [:]
 if (!(params.noquant) && params.isobaric && params.denoms) {
   params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
 }
+setsamples = [:]
+if (!(params.noquant) && params.isobaric && params.samplegroups) {
+  params.samplegroups.tokenize(' ').each{ it -> x=it.tokenize(':'); setsamples.put(x[0], x[1..-1])}
+}
+
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
 normalize = (!params.noquant && params.normalize && params.isobaric)
 rawisoquant = (!params.noquant && !params.normalize && params.isobaric)
@@ -771,7 +781,7 @@ deqms_psms
   .into { feats_out; deqms }
 
 
-process quantifyFeaturesDEqMS {
+process normalizeFeaturesDEqMS {
   input:
   set val(setname), file("psms"), val(acctype), file("features") from deqms
   output:
@@ -788,7 +798,7 @@ process quantifyFeaturesDEqMS {
   # run deqMS normalization and summarization, which produces logged ratios
 
   ${params.denoms ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : ""}
-  deqms.R psmvals features $setname ${params.denoms ? "\$denomcols" : ''}
+  deqms_normalize.R psmvals features $setname ${params.denoms ? "\$denomcols" : ''}
   # join feat tables on normalized proteins
   paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
   join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 features | sort -k1b,1 ) <(tail -n+2 normalized_feats | sort -k1b,1) >> feats_quants
@@ -829,10 +839,12 @@ process proteinPeptideSetMerge {
   input:
   set val(setnames), val(acctype), file(tables), file("psmcounts?") from ptables_to_merge
   file(lookup) from tlookup
+  file('sampletable') from Channel.from(sampletable).first()
   
   output:
   set val(acctype), file('proteintable') into featuretables
   set val(acctype), file('proteintable') into featqc_getpeptable
+  set val(setnames), val(acctype), file('proteintable') into deqms_de
 
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
@@ -844,6 +856,9 @@ process proteinPeptideSetMerge {
   ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o mergedtable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
+  # While doing this, fix header names so proper sample names come up
+  ${params.sampletable ?  'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' : ''}
+  # Add psm quant nr field
   for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psm_count ; done >> tmpheader
   tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/;s/\\#/Amount/g' > header  # sed to sub trailing tab for a newline, and not have pound sign
   # then join the table content
@@ -861,6 +876,22 @@ process proteinPeptideSetMerge {
   """
 }
 
+
+process calculateDEqMS {
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {"${outname}_table_withde.txt"}
+
+  input:
+  set val(setnames), val(acctype), file('feats') from deqms_de
+  file('sampletable') from Channel.from(sampletable).first()
+  output:
+  file('deqms_output') into deqmsde_out
+
+  script:
+  outname = (acctype == 'assoc') ? 'symbols' : acctype
+  """
+  deqms.R 
+  """
+}
 
 psm_result
   .filter { it[0] == 'target' }

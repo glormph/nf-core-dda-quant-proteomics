@@ -1,66 +1,69 @@
 #!/usr/bin/env Rscript
 
 library(DEqMS)
+library(reshape2)
 library(matrixStats)
 
-args = commandArgs(trailingOnly=TRUE)
-psms = args[1]
-filtered_features = args[2]
-setname = args[3]
-denomcols = args[4]
+# args = commandArgs(trailingOnly=TRUE)
+sampletable = read.table('sampletable', header=F, comment.char='', quote='', colClasses=c('character'))
+colnames(sampletable) = c('ch', 'set', 'sample', 'group')
+lookup = sampletable$group
+names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
 
-psms = read.table(psms, header=T, sep="\t", comment.char="", quote="")
-colnames(psms)[2] = "Feature"
-features = read.table(filtered_features, header=T, sep="\t", comment.char="", quote="")
+feats = read.table('feats', header=T, sep="\t", comment.char="", quote="")
+rownames(feats) = feats[,1]
 
-# this is to ensure we get values for each l
-psms[psms == 0] <- NA
-psms = na.omit(psms)
-lastcol = dim(psms)[2]
-psms[,3:lastcol] = log2(psms[,3:lastcol])
-psm.counts = as.data.frame(table(psms$Feature))
-countout = data.frame(feat=psm.counts$Var1, matrix(psm.counts$Freq, nrow(psm.counts), 1))
-write.table(countout, 'psmcounts', sep='\t', quote=F, row.names=F, col.names=F)
-rownames(psm.counts) = psm.counts$Var1
+# Remove possible internal standard
+#feats = feats[, -grep('^X__POOL', colnames(feats))]
+#sampletable = sampletable[sampletable$group != 'X__POOL',]
 
-# Normalize and filter features against the passed filtered_features table
-if (is.na(denomcols)) {
-  print('Median sweeping')
-  proteins.nm = medianSweeping(psms, group_col=2)
-  proteins.nm = proteins.nm[rownames(proteins.nm) %in% features[,1], ]
-} else {
-  print('Median summarizing with denominators')
-  denomcols = as.numeric(strsplit(denomcols, ",")[[1]])
-  proteins = medianSummary(psms, group_col=2, ref_col=denomcols)
-  proteins.nm = equalMedianNormalization(proteins)
+# Get all features with more than 1 measurement in ALL sample groups, discard the rest
+feats.quant = feats[, grepl('plex', colnames(feats))]
+feats.quant$feat = rownames(feats.quant)
+feat.quantcount = melt(feats.quant, id.vars='feat')
+feat.quantcount$group = sapply(as.character(feat.quantcount$variable), function(x) lookup[[ sub('_[a-z]+[0-9]+plex', '', x) ]])
+feat.quantcount = dcast(aggregate(value~feat+group, na.omit(feat.quantcount), length), feat~group)
+tmpfeat = feat.quantcount$feat
+feat.quantcount$feat = NULL
+feat.quantcount[feat.quantcount < 2 ] = NA
+feat.quantcount$feat = tmpfeat
+filtered_feats_quantcount = na.omit(feat.quantcount)
+
+# With those features, filter the quant feats and PSM counts
+names(feats)[1] = 'feat'
+feats.filt = merge(filtered_feats_quantcount['feat', drop=F], feats, by='feat')
+rownames(feats.filt) = feats.filt$feat
+feats.psms = feats.filt[, grepl('quanted_psm_count', colnames(feats.filt)), drop=F]
+feats.filt = feats.filt[, grepl('plex', colnames(feats.filt))]
+
+# Take median PSMs, do lmFit
+feats.psms$median = round(rowMedians(as.matrix(feats.psms), na.rm=T))
+rownames(sampletable) = 1:nrow(sampletable)
+design = model.matrix(~0+group, sampletable)
+colnames(design) = gsub('group', '', colnames(design))
+fit1 = lmFit(as.matrix(feats.filt), design=design)
+
+# Get all contrasts, do eBayes
+combinations = combn(as.character(unique(sampletable$group)), 2)
+contrasts = c()
+for (ix in 1:ncol(combinations)) {
+  comb = combinations[,ix]
+  contrasts = append(contrasts, paste(comb, collapse='-'))
 }
-featcol = data.frame(feats=rownames(proteins.nm))
-write.table(cbind(featcol, proteins.nm), 'normalized_feats', sep='\t', quote=F, row.names=F)
+cont <- makeContrasts(contrasts=contrasts, levels = design)
+fit2 = eBayes(contrasts.fit(fit1, contrasts = cont))
+fit2$count = feats.psms[rownames(fit2$coefficients),]$median
+fit3 = spectraCounteBayes(fit2)
 
-## DEqMS
-#cond = c('a', 'a', 'a', 'a', 'a', 'b', 'b', 'b', 'b', 'b')
-#sampleTable <- data.frame(row.names=colnames(psms)[3:lastcol], cond=as.factor(cond))
-#print(sampleTable) # REMOVE
-#feats.mx = as.matrix(proteins.nm)
-#design = model.matrix(~cond, sampleTable)
-#dim(feats.mx) # REMOVE
-#print(head(feats.mx)) # REMOVE
-#
-#fit1 <- eBayes(lmFit(feats.mx, design))
-#fit1$count <- psm.counts[rownames(fit1$coefficients), 2]  # add an attribute containing PSM/peptide count for each gene
-#print(fit1)
-
-# FIXME does not work, mailed YZ
-#fit2 = spectraCounteBayes(fit1)
-
-## This is dev branch and not out yet
-##VarianceBoxplot(fit2,n=30, main=paste("Set", setname), xlab="PSM count") # this function only available in latest devel branch
-
-#DEqMS.results = outputResult(fit2, coef_col=3)
-#write.table(DEqMS.results, "DEqMS.analysis.out.txt", quote=F,sep="\t",row.names = F)
-#head(DEqMS.results,n=5)
-
-
-
-
-# FIXME filter proteins 1%FDR list
+# Report
+outcols = c('logFC', 'count', 'sca.P.Value', 'sca.adj.pval')
+outfeats = feats
+for (col in 1:length(contrasts)) {
+  cond_report = outputResult(fit3, coef_col=col)[outcols]
+  names(cond_report) = sapply(names(cond_report), function(x) paste(contrasts[col], x, sep='_'))
+  featcol = colnames(feats)[1]
+  cond_report[featcol] = rownames(cond_report)
+  outfeats = merge(outfeats, cond_report, by=featcol, all.x=T)
+  print(head(outfeats))
+}
+write.table(outfeats, 'deqms_output', sep='\t', row.names=F, quote=F)
