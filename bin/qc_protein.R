@@ -155,7 +155,6 @@ if (length(grep('plex', names(feats)))) {
 }
 
 
-print('perc')
 # percentage_onepsm
 if (length(grep('plex', names(feats)))) {
   nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
@@ -178,7 +177,6 @@ if (length(grep('plex', names(feats)))) {
   }
 }
 
-print('ms1step')
 # ranked step plot MS1 peptide per protein
 if (feattype != 'peptides') {
   peps = read.table(peptable, header=T, sep='\t', comment.char='', quote='')

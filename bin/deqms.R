@@ -11,11 +11,13 @@ lookup = sampletable$group
 names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
 
 feats = read.table('feats', header=T, sep="\t", comment.char="", quote="")
+colnames(feats) = sapply(colnames(feats), function(x) sub('q.value', 'q-value', x))
+featcol = colnames(feats)[1]
 rownames(feats) = feats[,1]
 
 # Remove possible internal standard
-#feats = feats[, -grep('^X__POOL', colnames(feats))]
-#sampletable = sampletable[sampletable$group != 'X__POOL',]
+feats = feats[, -grep('^X__POOL', colnames(feats))]
+sampletable = sampletable[sampletable$group != 'X__POOL',]
 
 # Get all features with more than 1 measurement in ALL sample groups, discard the rest
 feats.quant = feats[, grepl('plex', colnames(feats))]
@@ -61,9 +63,8 @@ outfeats = feats
 for (col in 1:length(contrasts)) {
   cond_report = outputResult(fit3, coef_col=col)[outcols]
   names(cond_report) = sapply(names(cond_report), function(x) paste(contrasts[col], x, sep='_'))
-  featcol = colnames(feats)[1]
-  cond_report[featcol] = rownames(cond_report)
-  outfeats = merge(outfeats, cond_report, by=featcol, all.x=T)
-  print(head(outfeats))
+  cond_report$feat = rownames(cond_report)
+  outfeats = merge(outfeats, cond_report, by='feat', all.x=T)
 }
+names(outfeats)[1] = featcol
 write.table(outfeats, 'deqms_output', sep='\t', row.names=F, quote=F)

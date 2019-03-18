@@ -35,6 +35,8 @@ def helpMessage() {
       --activation VALUE            Specify activation protocol: hcd (DEFAULT), cid, etd for isobaric 
                                     quantification. Not necessary for other functionality.
       --normalize                   Normalize isobaric values by median centering on channels of protein table
+      --sampletable                 Path to sample annotation table in case of isobaric analysis
+      --deqms                       Perform DEqMS differential expression analysis using sampletable
       --genes                       Produce gene table (i.e. ENSG or gene names from Swissprot)
       --symbols                     Produce gene symbols table (i.e. gene names when using ENSEMBL DB)
       --martmap FILE                Necessary when using ENSEMBL FASTA database, tab-separated file 
@@ -99,6 +101,7 @@ params.onlypeptides = false
 params.noquant = false
 params.denoms = false
 params.sampletable = false
+params.deqms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -119,7 +122,10 @@ if (params.pipep) {
 if (params.sampletable) {
   sampletable = file(params.sampletable)
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
+} else {
+  sampletable = 0
 }
+
 output_docs = file("$baseDir/docs/output.md")
 
 // set constant variables
@@ -178,6 +184,7 @@ summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
+summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
 summary['Instrument'] = params.instrument
 summary['Isobaric tags'] = params.isobaric
@@ -193,6 +200,7 @@ summary['HiRIEF'] = params.hirief
 summary['peptide pI data'] = params.pipep
 summary['Only output peptides'] = params.onlypeptides
 summary['Do not quantify'] = params.noquant
+summary['Perform DE analysis'] = params.deqms
 summary['Max Memory']   = params.max_memory
 summary['Max CPUs']     = params.max_cpus
 summary['Max Time']     = params.max_time
@@ -818,7 +826,6 @@ if(normalize) {
   feats_out
     .map { it -> [it[0], it[2], it[3]] } // setname, accession type, feature table
     .groupTuple(by: 1) // collect all tables for same feature
-    .view()
     .set { ptables_to_merge }
 }
 
@@ -834,20 +841,16 @@ psmlookup
 
 process proteinPeptideSetMerge {
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: { it == "proteintable" ? "${outname}_table.txt": null}
-
   input:
   set val(setnames), val(acctype), file(tables), file("psmcounts?") from ptables_to_merge
   file(lookup) from tlookup
   file('sampletable') from Channel.from(sampletable).first()
   
   output:
-  set val(acctype), file('proteintable') into featuretables
   set val(acctype), file('proteintable') into featqc_getpeptable
-  set val(setnames), val(acctype), file('proteintable') into deqms_de
+  set val(acctype), file('proteintable') into merged_feats
 
   script:
-  outname = (acctype == 'assoc') ? 'symbols' : acctype
   if (normalize)
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
@@ -857,7 +860,8 @@ process proteinPeptideSetMerge {
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
   # While doing this, fix header names so proper sample names come up
-  ${params.sampletable ?  'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' : ''}
+  ${params.sampletable && params.isobaric ?  'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' : ''}
+  # TODO implement sample/group names for labelfree, probably better to wait for new labelfree pipeline
   # Add psm quant nr field
   for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psm_count ; done >> tmpheader
   tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/;s/\\#/Amount/g' > header  # sed to sub trailing tab for a newline, and not have pound sign
@@ -876,22 +880,24 @@ process proteinPeptideSetMerge {
   """
 }
 
+(plain_feats, dqms_feats) = ( params.deqms ? [Channel.empty(), merged_feats] : [merged_feats, Channel.empty()])
 
 process calculateDEqMS {
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {"${outname}_table_withde.txt"}
 
   input:
-  set val(setnames), val(acctype), file('feats') from deqms_de
+  set val(acctype), file('feats') from dqms_feats 
   file('sampletable') from Channel.from(sampletable).first()
+
   output:
-  file('deqms_output') into deqmsde_out
+  set val(acctype), file('deqms_output') into dqms_out 
 
   script:
-  outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
   deqms.R 
   """
 }
+
+
 
 psm_result
   .filter { it[0] == 'target' }
@@ -932,20 +938,25 @@ featqc_getpeptable
   .filter { it[0] == 'peptides' }
   .map { it -> it[1] }
   .set { featqc_peptides }
-featuretables
+
+plain_feats
+  .mix(dqms_out)
   .merge(setnames_featqc)
   .combine(featqc_peptides)
   .set { featqcinput }
 
 
 process featQC {
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${outname}_table.txt": null}
 
   input:
   set val(acctype), file('feats'), val(setnames), file(peptable) from featqcinput
   output:
+  file('feats') into featsout
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
+  outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
   qc_protein.R ${setnames.size()} ${acctype} $peptable
@@ -958,13 +969,11 @@ process featQC {
   ${acctype == 'peptides' ? 'touch summary.txt' : ''}
 
   # Create overlap table
-  qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n _q-value| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
+  qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n "_q-value"| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
   protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | cut -f1 -d ':')
-  echo protcol is \$protcol
   ${acctype == 'peptides' ? 'cut -f1,"\$qcols","\$protcol" feats | grep -v ";" > tmpqvals' : 'cut -f1,"\$qcols" feats > qvals'}
   ${acctype == 'peptides' ? 'nonprotcol=\$(head -n1 tmpqvals | tr "\\t" "\\n" |grep -vn Protein | cut -f1 -d":" | tr "\\n" "," | sed "s/\\,\$//") && cut -f"\$nonprotcol" tmpqvals > qvals' : ''}
   nrsets=\$(wc -l nrsets | sed 's/\\ .*//')
-  echo Nrsets is \$nrsets
   # read lines, sed removes all non-A chars so only N from NA is left.
   while read line ; do 
   	nr=\$(printf "\$line" |wc -m)  # Count NA
