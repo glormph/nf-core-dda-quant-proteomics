@@ -134,25 +134,28 @@ if (length(grep('plex', names(feats)))) {
   tmtcols = colnames(feats)[grep('plex', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
-  nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_[a-z0-9]*plex_[0-9NC]*_quanted_psm_count', '', nrpsms$variable)
-  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$Set)
-  if (feattype == 'peptides') {
-    nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
-  } else {
-    nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
+  if (nrow(overlap) > 0) {
+    nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
+    nrpsms$Set = sub('_[a-z0-9]*plex_[0-9NC]*_quanted_psm_count', '', nrpsms$variable)
+    nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$Set)
+    if (feattype == 'peptides') {
+      nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
+    } else {
+      nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
+    }
+    nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
+    png('nrpsmsoverlapping')
+    print(ggplot(nrpsms, aes(y=value, x=setrank)) +
+      geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
+      theme_bw() + 
+      theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+      scale_x_reverse())
+      dev.off()
   }
-  nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
-  png('nrpsmsoverlapping')
-  print(ggplot(nrpsms, aes(y=value, x=setrank)) +
-    geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
-    theme_bw() + 
-    theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
-    scale_x_reverse())
-    dev.off()
 }
 
 
+print('perc')
 # percentage_onepsm
 if (length(grep('plex', names(feats)))) {
   nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
@@ -160,19 +163,22 @@ if (length(grep('plex', names(feats)))) {
   tmtcols = colnames(feats)[grep('plex', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
-  nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable) # this is enough for DEqMS pipeline
-  # but need also following line for normal pipe bc nr-psms values are reported per channel
-  nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$Set)
-  feats_in_set = aggregate(value~Set, data=nrpsms, length) 
-  feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
-  png('percentage_onepsm')
-  print(ggplot(feats_in_set, aes(Set, percent_single)) +
-    geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
-    theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) )
-  dev.off()
+  if (nrow(overlap) > 0) {
+    nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
+    nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable) # this is enough for DEqMS pipeline
+    # but need also following line for normal pipe bc nr-psms values are reported per channel
+    nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$Set)
+    feats_in_set = aggregate(value~Set, data=nrpsms, length) 
+    feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
+    png('percentage_onepsm')
+    print(ggplot(feats_in_set, aes(Set, percent_single)) +
+      geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
+      theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) )
+    dev.off()
+  }
 }
 
+print('ms1step')
 # ranked step plot MS1 peptide per protein
 if (feattype != 'peptides') {
   peps = read.table(peptable, header=T, sep='\t', comment.char='', quote='')
