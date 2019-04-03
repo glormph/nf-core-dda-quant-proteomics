@@ -634,7 +634,7 @@ process createPSMTable {
   sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
   ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
   ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile $psmlookup" : ''}
-  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o ${params.hirief ? "pgpsms" : "$outpsms"} --dbfile $psmlookup" : 'mv qpsms.txt pgpsms'}
+  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o ${params.hirief ? "pgpsms" : "$outpsms"} --dbfile $psmlookup" : "mv qpsms.txt ${params.hirief ? "pgpsms" : "$outpsms"} }
   ${params.hirief ? "peptide_pi_annotator.py -i $trainingpep -p pgpsms --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --strippatterns ${allstrips.join(' ')} --intercepts ${allstrips.collect() { params.strips[it].intercept}.join(' ')} --widths ${allstrips.collect() { params.strips[it].fr_width}.join(' ')} --ignoremods \'*\'" : ''}
   msspsmtable split -i ${outpsms} --bioset
   """
