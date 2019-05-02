@@ -64,11 +64,11 @@ if (feattype == 'peptides') {
   am_prots = melt(am_prots)
   colnames(am_prots)[3] = 'accession'
   print(ggplot(am_prots) +
-    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), legend.text=element_text(size=20), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=30)) +
+    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), legend.text=element_text(size=20), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=20)) +
     geom_bar(aes(fct_rev(Set), y=accession, fill=variable), stat='identity', position='dodge') +
     geom_text(data=subset(am_prots, variable=='All'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=-0.25) + 
     geom_text(data=subset(am_prots, variable=='Non-shared (unique)'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=+0.25) + 
-    ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique)))
+	ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique)))
 } else {
   if (length(grep('plex', names(feats)))) {
     # if isobaric, then show summary table of feats 1%FDR AND quant
@@ -92,7 +92,7 @@ if (feattype == 'peptides') {
   am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
   colnames(am_prots)[2] = 'accession'
   print(ggplot(am_prots) +
-    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), plot.title=element_text(size=30)) +
+    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), plot.title=element_text(size=20)) +
     geom_bar(aes(fct_rev(Set), y=accession), stat='identity') +
     geom_text(aes(fct_rev(Set), accession/2, label=accession), colour="white", size=10) + ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal identified: ', nrow(feats))))
 }

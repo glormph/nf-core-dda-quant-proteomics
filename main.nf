@@ -1006,7 +1006,10 @@ process collectQC {
   script:
   """
   count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; mv summary\$count \${ac}_summary; mv overlap\$count \${ac}_overlap; ((count++)); done
-  join -j 1 -o auto -t '\t' <(sort -k1b,1 psms_summary) <(sort -k1b,1 peptides_summary) > psmpepsum
+  join -j 1 -o auto -t '\t' <(head -n1 psms_summary) <(head -n1 peptides_summary) > psmpepsum_header
+  join -j 1 -o auto -t '\t' <(tail -n+2 psms_summary | sort -k1b,1 ) <(tail -n+2 peptides_summary | sort -k1b,1 ) > psmpepsum_tab
+  cat psmpepsum_header psmpepsum_tab > psmpepsum
+
   ${params.onlypeptides ? 'tee < psmpepsum > summary pre_summary_light' : 'join -j 1 -o auto -t \'\t\' psmpepsum <(sort -k1b,1 proteins_summary) > pepprotsum'}
 
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' pepprotsum <( sort -k1b,1 genes_summary) > summary' : "${!params.onlypeptides ? 'tee < pepprotsum > summary pre_summary_light' : "awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$3,\$2}' pre_summary_light > summary_light"}"}
