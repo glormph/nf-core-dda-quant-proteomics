@@ -291,9 +291,7 @@ else if (!params.mzmldef) {
 // Set fraction name to NA if not specified
 mzml_in
   .map { it -> [it[1], file(it[0]).baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), file(it[0]), it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]}
-  .tap{ sets; strips; mzmlfiles; mzml_isobaric; mzml_quant; mzml_msgf }
-  .count()
-  .set{ amount_mzml }
+  .into { sets; strips; mzmlfiles; mzml_quant; mzml_msgf }
 
 // Set names are first item in input lists, collect them for PSM tables and QC purposes
 sets
@@ -343,7 +341,7 @@ process quantifySpectra {
 
 // Collect all mzMLs into single item to pass to lookup builder and spectra counter
 mzmlfiles
-  .buffer(size: amount_mzml.value)
+  .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
   .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[3] } ] } // lists: [sets], [mzmlfiles], [plates]
   .into { mzmlfiles_all; mzmlfiles_all_count }
@@ -369,7 +367,7 @@ process createSpectraLookup {
 // Collect all isobaric quant XML output for quant lookup building process
 isobaricxml
   .ifEmpty(['NA', 'NA', 'NA'])
-  .buffer(size: params.isobaric ? amount_mzml.value : 1)
+  .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }] } // samples, isoxml
   .set { isofiles_sets }
@@ -377,7 +375,7 @@ isobaricxml
 // Collect all MS1 kronik output for quant lookup building process
 kronik_out
   .ifEmpty(['NA', 'NA'])
-  .buffer(size: amount_mzml.value)
+  .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }] } // samples, kronikout, mzml
   .set { krfiles_sets }
