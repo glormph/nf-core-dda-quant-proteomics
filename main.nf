@@ -674,9 +674,9 @@ process psm2Peptides {
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
   # Create empty protein/gene/gene-symbol tables with only the identified accessions, will be filled later
   echo Protein ID|tee proteins genes symbols
-  tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'| grep -v "^NA\$" | grep -v "^\$"|sort|uniq >> proteins
-  tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'| grep -v "^NA\$" | grep -v "^\$"|sort|uniq >> genes
-  tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'| grep -v "^NA\$" | grep -v "^\$"|sort|uniq >> symbols
+  ${!params.onlypeptides ? "tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> proteins" : "" }
+  ${params.genes ? "tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> genes" : ""}
+  ${params.symbols ? "tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> symbols" : ""}
   ${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}
   ${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
   # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
