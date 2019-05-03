@@ -858,6 +858,7 @@ process proteinPeptideSetMerge {
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
   # While doing this, fix header names so proper sample names come up
+  ${params.sampletable && params.isobaric ?  'sed -i  "s/[^A-Za-z0-9_\\t\\-]/_/g" sampletable' : ''}
   ${params.sampletable && params.isobaric ?  'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' : ''}
   # TODO implement sample/group names for labelfree, probably better to wait for new labelfree pipeline
   # Add psm quant nr field
