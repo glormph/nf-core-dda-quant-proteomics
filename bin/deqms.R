@@ -5,7 +5,7 @@ library(reshape2)
 library(matrixStats)
 
 # args = commandArgs(trailingOnly=TRUE)
-sampletable = read.table('sampletable', header=F, comment.char='', quote='', colClasses=c('character'))
+sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
 colnames(sampletable) = c('ch', 'set', 'sample', 'group')
 lookup = sampletable$group
 names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
