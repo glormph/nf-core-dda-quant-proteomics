@@ -17,7 +17,7 @@ featcol = colnames(feats)[1]
 rownames(feats) = feats[,1]
 
 # Remove possible internal standard
-feats = feats[, -grep('^X__POOL', colnames(feats))]
+feats = feats[, !grepl('^X__POOL', colnames(feats))]
 sampletable = sampletable[sampletable$group != 'X__POOL',]
 
 # Get all features with more than 1 measurement in ALL sample groups, discard the rest
