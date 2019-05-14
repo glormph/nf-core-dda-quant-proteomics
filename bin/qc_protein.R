@@ -7,10 +7,11 @@ args = commandArgs(trailingOnly=TRUE)
 nrsets = as.numeric(args[1])
 feattype = args[2]
 peptable = args[3]
+sampletable = args[4]
 make_normtable = FALSE
-if(length(args) == 4) {
+if(length(args) == 5) {
  make_normtable = TRUE
- normtable = args[4]
+ normtable = args[5]
 }
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
@@ -109,12 +110,27 @@ if (feattype == 'proteins') {
 }
 
 #isobaric
+# first get a fullsamplename to set lookup, if we have a sampletable
+use_sampletable = FALSE
+if (file.exists(sampletable)) {
+  use_sampletable = TRUE
+  sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
+  colnames(sampletable) = c('ch', 'set', 'sample', 'group')
+  lookup = sampletable$set
+  names(lookup) = apply(sampletable[c('group', 'sample', 'set', 'ch')], 1, paste, collapse='_')
+  names(lookup) = gsub('[^a-zA-Z0-9_-]', '_', names(lookup))
+}
+
 if (length(grep('plex', names(feats)))) {
   tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
   tmt = melt(feats, id.vars=featcol, measure.vars = tmtcols)
-  tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$variable)
+  if (use_sampletable) {
+    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[["variable"]]); print(key); return (lookup[[key]]) })
+  } else { 
+    tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$variable)
+  }
   tmt$variable = sub('.*_[a-z].*[0-9]*plex_', '', tmt$variable)
   outplot = ggplot(na.exclude(tmt)) + geom_boxplot(aes(fct_rev(Set), value, fill=fct_rev(variable)), position=position_dodge(width=1)) +
     coord_flip() + ylab('Fold change') + xlab('Channels') + theme_bw() + 

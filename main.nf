@@ -845,7 +845,7 @@ process proteinPeptideSetMerge {
   file('sampletable') from Channel.from(sampletable).first()
   
   output:
-  set val(acctype), file('proteintable') into featqc_getpeptable
+  set val(acctype), file('proteintable'), file('sampletable') into featqc_extra_peptide_samples
   set val(acctype), file('proteintable') into merged_feats
 
   script:
@@ -933,15 +933,15 @@ process psmQC {
   """
 }
 
-featqc_getpeptable
+featqc_extra_peptide_samples
   .filter { it[0] == 'peptides' }
-  .map { it -> it[1] }
-  .set { featqc_peptides }
+  .map { it -> [it[1], it[2]] }
+  .set { featqc_peptides_samples }
 
 plain_feats
   .mix(dqms_out)
   .merge(setnames_featqc)
-  .combine(featqc_peptides)
+  .combine(featqc_peptides_samples)
   .set { featqcinput }
 
 
@@ -949,7 +949,7 @@ process featQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${outname}_table.txt": null}
 
   input:
-  set val(acctype), file('feats'), val(setnames), file(peptable) from featqcinput
+  set val(acctype), file('feats'), val(setnames), file(peptable), file(sampletable) from featqcinput
   output:
   file('feats') into featsout
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
@@ -958,7 +958,7 @@ process featQC {
   outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
-  qc_protein.R ${setnames.size()} ${acctype} $peptable
+  qc_protein.R ${setnames.size()} ${acctype} $peptable ${params.sampletable ? "$sampletable" : "FALSE"}
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
