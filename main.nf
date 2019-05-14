@@ -1009,14 +1009,17 @@ process collectQC {
   count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; mv summary\$count \${ac}_summary; mv overlap\$count \${ac}_overlap; ((count++)); done
   join -j 1 -o auto -t '\t' <(head -n1 psms_summary) <(head -n1 peptides_summary) > psmpepsum_header
   join -j 1 -o auto -t '\t' <(tail -n+2 psms_summary | sort -k1b,1 ) <(tail -n+2 peptides_summary | sort -k1b,1 ) > psmpepsum_tab
-  cat psmpepsum_header psmpepsum_tab > psmpepsum
 
-  ${params.onlypeptides ? 'tee < psmpepsum > summary pre_summary_light' : 'join -j 1 -o auto -t \'\t\' psmpepsum <(sort -k1b,1 proteins_summary) > pepprotsum'}
+  # onlypeptides makes a quick summary, else also add proteins
+  ${params.onlypeptides ? 'cat psmpepsum_header psmpepsum_tab | tee summary pre_summary_light' : 'join -j 1 -o auto -t \'\t\' psmpepsum_tab <(sort -k1b,1 <(tail -n+2 proteins_summary)) > pepprotsum_tab && join -j 1 -o auto -t \'\t\' psmpepsum_header <(head -n1 proteins_summary) > pepprotsum_head'}
+  ${params.onlypeptides ? "awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$3,\$2}' pre_summary_light_tab > summary_light_tab" : ""}
 
-  ${params.genes ?  'join -j 1 -o auto -t \'\t\' pepprotsum <( sort -k1b,1 genes_summary) > summary' : "${!params.onlypeptides ? 'tee < pepprotsum > summary pre_summary_light' : "awk -v FS='\\t' -v OFS='\\t' '{print \$1,\$3,\$2}' pre_summary_light > summary_light"}"}
+  # in case of genes, join those on the prot/pep tables (full summary) and psmpeptables (light summary), else passthrough those to summaries
+  ${params.genes ?  'join -j 1 -o auto -t \'\t\' pepprotsum_tab <( sort -k1b,1 <( tail -n+2 genes_summary)) > summary_tab && join -j 1 -o auto -t \'\t\' pepprotsum_head <(head -n1 genes_summary) > summary_head && cat summary_head summary_tab > summary' : "${!params.onlypeptides ? 'cat pepprotsum_head pepprotsum_tab | tee summary summary_light' : ""}"}
+  ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum_tab <( sort -k1b,1 <(tail -n+2 genes_summary)) > summary_light_tab' : ''}
+  ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum_header <( head -n1 genes_summary) > summary_light_head && cat summary_light_head summary_light_tab > summary_light' : ''}
 
-  ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum <( sort -k1b,1 genes_summary) > pre_summary_light' : ''}
-  mv pre_summary_light summary_light
+  # collect and generate HTML report
   qc_collect.py $baseDir/assets/qc_full.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
   qc_collect.py $baseDir/assets/qc_light.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
   """
