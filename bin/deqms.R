@@ -9,7 +9,7 @@ sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quo
 colnames(sampletable) = c('ch', 'set', 'sample', 'group')
 lookup = sampletable$group
 names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
-names(lookup) = gsub('[^a-zA-Z0-9_-]', '_', names(lookup))
+names(lookup) = gsub('[^a-zA-Z0-9_]', '_', names(lookup))
 
 feats = read.table('feats', header=T, sep="\t", comment.char="", quote="")
 colnames(feats) = sapply(colnames(feats), function(x) sub('q.value', 'q-value', x))
