@@ -857,11 +857,7 @@ process proteinPeptideSetMerge {
   ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o mergedtable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
-  # While doing this, fix header names so proper sample names come up
-  ${params.sampletable && params.isobaric ?  'sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable' : ''}
-  ${params.sampletable && params.isobaric ?  'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' : ''}
-  # TODO implement sample/group names for labelfree, probably better to wait for new labelfree pipeline
-  # Add psm quant nr field
+  # Add psm quant nr field to header
   for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psm_count ; done >> tmpheader
   tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/;s/\\#/Amount/g' > header  # sed to sub trailing tab for a newline, and not have pound sign
   # then join the table content
@@ -957,6 +953,13 @@ process featQC {
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
+  # exchange sample names in header
+  ${params.sampletable && params.isobaric ?  
+    'head -n1 feats > tmpheader ; \
+    sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable ; \
+    while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable ; \
+    cat tmpheader <(tail -n+2 feats) > tmpfeats && mv tmpfeats feats'
+  : ''}
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
   qc_protein.R ${setnames.size()} ${acctype} $peptable ${params.sampletable ? "$sampletable" : "FALSE"}
   echo "<html><body>" > featqc.html
