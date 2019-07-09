@@ -32,6 +32,16 @@ def helpMessage() {
 
     Options:
       --isobaric VALUE              In case of isobaric, specify: tmt10plex, tmt6plex, itraq8plex, itraq4plex
+      --prectol                     Precursor error for search engine (default 10ppm)
+      --iso_err                     Isotope error for search engine (default -1,2)
+      --frag                        Fragmentation method for search engine (default 'auto')
+      --enzyme                      Enzyme used, default trypsin, pick from:
+                                    unspecific, trypsin, chymotrypsin, lysc, lysn, gluc, argc, aspn, no_enzyme
+      --terminicleaved              Allow only 'full', 'semi' or 'non' cleaved peptides
+      --minpeplen                   Minimum peptide length to search
+      --maxpeplen                   Maximum peptide length to search
+      --mincharge                   Minimum peptide charge search
+      --maxcharge                   Maximum peptide charge search
       --activation VALUE            Specify activation protocol: hcd (DEFAULT), cid, etd for isobaric 
                                     quantification. Not necessary for other functionality.
       --normalize                   Normalize isobaric values by median centering on channels of protein table
@@ -86,6 +96,16 @@ params.plaintext_email = false
 params.martmap = false
 params.isobaric = false
 params.instrument = 'qe' // Default instrument is Q-Exactive
+params.prectol = '10.0ppm'
+params.iso_err = '-1,2'
+params.frag = 'auto'
+params.enzyme = 'trypsin'
+params.terminicleaved = 'full' // semi, non
+params.minpeplen = 7
+params.maxpeplen = 50
+params.mincharge = 2
+params.maxcharge = 6
+params.fdrmethod = 'tdconcat'
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
@@ -187,6 +207,16 @@ summary['Target DB']    = params.tdb
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
 summary['Instrument'] = params.instrument
+summary['Precursor tolerance'] = params.prectol
+summary['Isotope error'] = params.iso_err
+summary['Fragmentation method'] = params.frag
+summary['Enzyme'] = params.enzyme
+summary['Allowed peptide termini cleavage'] = params.terminicleaved
+summary['Minimum peptide length'] = params.minpeplen
+summary['Maximum peptide length'] = params.maxpeplen
+summary['Minimum peptide charge'] = params.mincharge
+summary['Maximum peptide charge'] = params.maxcharge
+summary['FDR method'] = params.fdrmethod
 summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
 summary['Isobaric normalization'] = params.normalize
@@ -529,12 +559,18 @@ process msgfPlus {
   script:
   msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
   msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
+  fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][params.frag]
+  enzyme = params.enzyme.indexOf('-') > -1 ? params.enzyme.replaceAll('-', '') : params.enzyme
+  enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]
+  ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
+
   """
-  msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * 3} -mod $mods -tda 0 -t 10.0ppm -ti -1,2 -m 0 -inst ${msgfinstrument} -e 1 -protocol ${msgfprotocol} -ntt 2 -minLength 7 -maxLength 50 -minCharge 2 -maxCharge 6 -n 1 -addFeatures 1
+  msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * 3} -mod $mods -tda 0 -t ${params.prectol} -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.mzid.tsv
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   """
 }
+
 
 mzids
   .groupTuple()
@@ -549,11 +585,12 @@ process percolator {
   output:
   set val(setname), file('perco.xml') into percolated
 
+  script:
   """
   echo $samples
   mkdir mzids
   count=1;for sam in ${samples.join(' ')}; do ln -s `pwd`/mzid\$count mzids/\${sam}.mzid; echo mzids/\${sam}.mzid >> metafile; ((count++));done
-  msgf2pin -o percoin.xml -e trypsin -P "decoy_" metafile
+  msgf2pin -o percoin.xml -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.xml -X perco.xml -N 500000 --decoy-xml-output -y
   """
 }
@@ -575,6 +612,7 @@ process svmToTSV {
   set val(setname), val('decoy'), file('dmzidperco') into dmzidtsv_perco
 
   script:
+  if (params.fdrmethod == 'tdconcat')
   """
   perco_to_tsv.py -p $perco --plates ${platenames.join(' ')} --fractions ${fractions.join(' ')}
   """
