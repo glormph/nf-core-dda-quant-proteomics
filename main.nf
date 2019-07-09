@@ -1023,8 +1023,8 @@ process collectQC {
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum_header <( head -n1 genes_summary) > summary_light_head && cat summary_light_head summary_light_tab > summary_light' : ''}
 
   # collect and generate HTML report
-  qc_collect.py $baseDir/assets/qc_full.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
-  qc_collect.py $baseDir/assets/qc_light.html $params.name ${params.hirief ? "hirief" : "nofrac"} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
   """
 }
 
