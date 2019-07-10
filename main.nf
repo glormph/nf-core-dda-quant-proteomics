@@ -278,8 +278,10 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
  */
 process get_software_versions {
 
+    publishDir "${params.outdir}", mode: 'copy'
+
     output:
-    file 'software_versions_mqc.yaml' into software_versions_yaml
+    file 'software_versions.yaml' into software_versions_qc
 
     script:
     """
@@ -292,7 +294,7 @@ process get_software_versions {
     msspsmtable --version > v_mss.txt
     source activate openms-2.4.0
     IsobaricAnalyzer |& grep Version > v_openms.txt || true
-    scrape_software_versions.py > software_versions_mqc.yaml
+    scrape_software_versions.py > software_versions.yaml
     """
 }
 
@@ -1041,6 +1043,7 @@ process collectQC {
   input:
   set val(acctypes), file('feat?'), file('summary?'), file('overlap?') from collected_feats_qc
   val(plates) from qcplates
+  file('sw_ver') from software_versions_qc
 
   output:
   set file('qc_light.html'), file('qc_full.html')
@@ -1060,6 +1063,9 @@ process collectQC {
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum_tab <( sort -k1b,1 <(tail -n+2 genes_summary)) > summary_light_tab' : ''}
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum_header <( head -n1 genes_summary) > summary_light_head && cat summary_light_head summary_light_tab > summary_light' : ''}
 
+  # remove Yaml from software_versions to get HTML
+  grep -A \$(wc -l sw_ver | cut -f 1 -d ' ') "data\\:" sw_ver | tail -n+2 > sw_ver_cut
+  
   # collect and generate HTML report
   qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
   qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}

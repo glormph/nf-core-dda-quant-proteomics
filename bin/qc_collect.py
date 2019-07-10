@@ -18,6 +18,27 @@ with open(template) as fp:
     main = Template(fp.read())
 with open('psms.html') as fp:
     psmsel = parse(fp).find('body').findall('div')
+with open('sw_ver_cut') as fp:
+    software = parse(fp).find('body').find('dl').getchildren()
+
+sw_ver_template = """
+<table class="table">
+<thead>
+<th>Software</th>
+<th>Version</th>
+</thead>
+<tbody>
+{}
+</tbody>
+</table>
+"""
+sw_vers = []
+for element in software:
+    if element.tag == 'dt':
+        sw_vers.append('<tr><td>{}</td>'.format(element.text))
+    else:
+        sw_vers.append('<td>{}</td></tr>'.format(element.text))
+
 
 psms = {x.attrib['id']: tostring(x, encoding='unicode') for x in psmsel if x.attrib['class'] == 'chunk'}
 if frac == 'frac':
@@ -105,4 +126,4 @@ if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, software=sw_ver_template.format('\n'.join(sw_vers))))
