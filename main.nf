@@ -425,14 +425,15 @@ if (params.noquant && !params.quantlookup) {
   Channel
     .fromPath(params.quantlookup)
     .into { quant_lookup; countlookup }
+  Channel.empty().set { spec_lookup }
 } 
 
 
 process quantLookup {
 
-  when: !params.quantlookup && !params.noquant
-
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'db.sqlite' ? 'quant_lookup.sql' : null }
+
+  when: !params.quantlookup && !params.noquant
 
   input:
   file lookup from spec_lookup
@@ -440,7 +441,7 @@ process quantLookup {
   set val(krsamples), file(krfns), file(mzmls) from krfiles_sets
 
   output:
-  file 'db.sqlite' into newquantlookup
+  file('db.sqlite') into newquantlookup
 
   script:
   if (params.isobaric)
