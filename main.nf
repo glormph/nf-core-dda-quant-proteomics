@@ -93,6 +93,7 @@ params.name = false
 params.email = false
 params.plaintext_email = false
 
+params.mzmls = false
 params.martmap = false
 params.isobaric = false
 params.instrument = 'qe' // Default instrument is Q-Exactive
@@ -138,7 +139,8 @@ if (params.martmap) {
 if (params.pipep) {
   trainingpep = file(params.pipep)
   if( !trainingpep.exists() ) exit 1, "Peptide pI data file not found: ${params.pipep}"
-}
+} else { trainingpep = false }
+
 if (params.sampletable) {
   sampletable = file(params.sampletable)
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
@@ -156,10 +158,6 @@ accolmap = [peptides: 12, proteins: 14, genes: 17, assoc: 18]
 setdenoms = [:]
 if (!(params.noquant) && params.isobaric && params.denoms) {
   params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
-}
-setsamples = [:]
-if (!(params.noquant) && params.isobaric && params.samplegroups) {
-  params.samplegroups.tokenize(' ').each{ it -> x=it.tokenize(':'); setsamples.put(x[0], x[1..-1])}
 }
 
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
@@ -298,7 +296,7 @@ process get_software_versions {
     """
 }
 
-if (params.mzmlPaths) {
+if (workflow.profile.tokenize(',').contains('test')) {
   // Profile 'test' delivers mzmlPaths
   Channel
     .from(params.mzmlPaths)
@@ -628,16 +626,6 @@ tmzidtsv_perco
   .combine(quant_lookup)
   .set { prepsm }
 
-// Set strips to false if not running hirief
-if (params.hirief) {
-  strips_for_deltapi
-    .map { it -> [it, trainingpep] }
-    .set { stripannot }
-} else {
-  strips_for_deltapi
-    .map { it -> [it, false, false]}
-    .set { stripannot }
-}
 
 
 /*
