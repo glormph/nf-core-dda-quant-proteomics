@@ -639,7 +639,8 @@ process createPSMTable {
   input:
   set val(setnames), val(td), file('psms?'), file('lookup') from prepsm
   set file(tdb), file(ddb) from searchdbs
-  set val(allstrips), file(trainingpep) from stripannot
+  val(allstrips) from strips_for_deltapi
+  file(trainingpep) 
 
   output:
   set val(td), file("${outpsms}") into psm_result
