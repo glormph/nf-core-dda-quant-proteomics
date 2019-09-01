@@ -320,6 +320,7 @@ else if (!params.mzmldef) {
 // Set platename to samplename if not specified. 
 // Set fraction name to NA if not specified
 mzml_in
+  .tap { mzmlfiles_counter } // for counting, so config can set time limit
   .map { it -> [it[1], file(it[0]).baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), file(it[0]), it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]}
   .into { sets; strips; mzmlfiles; mzml_quant; mzml_msgf }
 
@@ -376,6 +377,10 @@ mzmlfiles
   .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[3] } ] } // lists: [sets], [mzmlfiles], [plates]
   .into { mzmlfiles_all; mzmlfiles_all_count }
 
+mzmlfiles_counter
+  .count()
+  .subscribe { println "$it mzML files in analysis" }
+  .set { mzmlcount_psm }
 
 process createSpectraLookup {
 
@@ -641,6 +646,7 @@ process createPSMTable {
   set file(tdb), file(ddb) from searchdbs
   val(allstrips) from strips_for_deltapi
   file(trainingpep) 
+  val(mzmlcount) from mzmlcount_psm
 
   output:
   set val(td), file("${outpsms}") into psm_result
