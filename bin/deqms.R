@@ -32,15 +32,17 @@ feat.quantcount[feat.quantcount < 2 ] = NA
 feat.quantcount$feat = tmpfeat
 filtered_feats_quantcount = na.omit(feat.quantcount)
 
-# With those features, filter the quant feats and PSM counts
+# With those features, filter the quant feats and median(PSM counts) > 0 and not NA
 names(feats)[1] = 'feat'
+quantpsmcols = grepl('quanted_psm_count', colnames(feats))
+feats$median_psmcount = round(rowMedians(as.matrix(feats[quantpsmcols]), na.rm=T))
 feats.filt = merge(filtered_feats_quantcount['feat', drop=F], feats, by='feat')
+feats.filt = feats.filt[feats.filt$median_psmcount > 0,]
 rownames(feats.filt) = feats.filt$feat
-feats.psms = feats.filt[, grepl('quanted_psm_count', colnames(feats.filt)), drop=F]
+feats.psms = feats.filt$median_psmcount
 feats.filt = feats.filt[, grepl('plex', colnames(feats.filt))]
 
 # Take median PSMs, do lmFit
-feats.psms$median = round(rowMedians(as.matrix(feats.psms), na.rm=T))
 rownames(sampletable) = 1:nrow(sampletable)
 design = model.matrix(~0+group, sampletable)
 colnames(design) = gsub('group', '', colnames(design))
@@ -55,7 +57,7 @@ for (ix in 1:ncol(combinations)) {
 }
 cont <- makeContrasts(contrasts=contrasts, levels = design)
 fit2 = eBayes(contrasts.fit(fit1, contrasts = cont))
-fit2$count = feats.psms[rownames(fit2$coefficients),]$median
+fit2$count = feats.psms
 fit3 = spectraCounteBayes(fit2)
 
 # Report
