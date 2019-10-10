@@ -55,6 +55,7 @@ titles = {'psm-scans': '# PSMs and scans', 'miscleav': 'Missed cleavages',
           'msgfscore': 'MSGF Score',
           'featyield': 'Identifications', 'isobaric': 'Isobaric intensities',
           'precursorarea': 'Precursor area intensity',
+          'deqms': 'DEqMS results',
           'nrpsms': '# PSMs used for isobaric quantitation per identification',
           'nrpsmsoverlapping': '# PSMs used for isobaric quantitation per identification for only complete overlapping set',
           'percentage_onepsm': 'Percentage of identifications with >1 quantifying PSM in the complete overlapping set',
@@ -97,7 +98,7 @@ feattypes = {
 for feat in feattypes[templatetype]:
     try:
         with open('{}.html'.format(feat)) as fp:
-            graphs[feat] = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if x.attrib['class'] == 'chunk'}
+            graphs[feat] = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if 'class' in x.attrib and x.attrib['class'] == 'chunk'}
     except IOError as e:
         print(feat, e)
 

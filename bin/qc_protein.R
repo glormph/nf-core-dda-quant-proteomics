@@ -3,6 +3,7 @@
 library(ggplot2)
 library(forcats)
 library(reshape2)
+library(ggrepel)
 args = commandArgs(trailingOnly=TRUE)
 nrsets = as.numeric(args[1])
 feattype = args[2]
@@ -220,4 +221,37 @@ if (length(grep('area', names(feats)))) {
     print(ggplot(parea) + 
       geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
     dev.off()
+}
+
+
+# DEqMS volcano plots
+deqpval_cols = grep('_sca.P.Value$', names(feats))
+deqFC_cols = grep('_logFC$', names(feats))
+names(feats)[1] = 'feat'
+if (length(deqpval_cols)) {
+  s_table = unique(sampletable[sampletable$group != 'X__POOL', 'group'])
+  cartprod = expand.grid(s_table, s_table)
+  cartprod = cartprod[cartprod$Var1 != cartprod$Var2,]
+  for (comparison in paste(cartprod$Var1, cartprod$Var2, sep='.')) {
+    logfcname = sprintf('%s_logFC', comparison) 
+    if (length(grep(logfcname, names(feats)))) {
+      compnice = sub('[.]', ' vs. ', comparison)
+      logpname = sprintf('%s_log.sca.pval', comparison)
+      feats[, logpname] = -log10(feats[, sprintf('%s_sca.P.Value', comparison)])
+      png(sprintf('deqms_volcano_%s', comparison))
+      plot = ggplot(feats, aes(x=get(sprintf('%s_logFC', comparison)), y=get(logpname), label=feat)) +
+        geom_point(size=0.5 )+ theme_bw(base_size = 16) + # change theme
+        theme(axis.title=element_text(size=25), axis.text=element_text(size=20)) +
+        xlab(sprintf("log2 FC(%s)", compnice)) + # x-axis label
+        ylab('-log10 P-value') + # y-axis label
+        geom_vline(xintercept = c(-1,1), colour = "red") + # Add fold change cutoffs
+        geom_hline(yintercept = 3, colour = "red") + # Add significance cutoffs
+        geom_vline(xintercept = 0, colour = "black") # Add 0 lines
+      if (feattype != 'peptides') {
+        plot = plot + geom_text_repel(data=subset(feats, abs(get(logfcname)) > 1 & get(logpname) > 3))
+      }
+      print(plot)
+      dev.off()
+    }
+  }
 }
