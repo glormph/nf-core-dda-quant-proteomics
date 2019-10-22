@@ -3,13 +3,13 @@
 import re
 import sys
 import argparse
+import json
 
 
 def main():
     if sys.argv[1:] == []:
         sys.argv.append('-h')
     args = parse_commandline()
-    strips = {}
     if args.frac_col > 0:
         frac_col = args.frac_col - 1
     elif args.frac_col:
@@ -32,9 +32,14 @@ def main():
         pepcol = get_col_by_pattern(args.peptable, args.pepcolpattern)
     else:
         raise RuntimeError('Must define peptide sequence column')
-    for i, strip in enumerate(args.pipatterns):
-        strips[strip] = {'intercept': args.intercepts[i],
-                         'fr_width': args.fr_width[i]}
+    with open(args.stripdef) as fp:
+        strips = json.load(fp)
+    for strip in strips.values():
+        if 'intercept' in strip:
+            strip = {'1-{}'.format(strip['fr_amount']): strip}
+        for striprange, stripdata in strip.items():
+            frrange = striprange.split('-') 
+            stripdata['fr_range'] =  (int(frrange[0]), int(frrange[1])) 
     with open(args.outpeptable, 'w') as fp:
         for outline in annotate_peptable(args.pipeps, args.peptable, pepcol,
                                          frac_col, stripcol, strips,
@@ -43,10 +48,12 @@ def main():
             fp.write('\n')
 
 
-def get_strip(strips, string):
+def get_strip(strips, string, fraction):
     for pattern in strips.keys():
         if re.search(pattern, string):
-            return strips[pattern]
+            for strip in strips[pattern].values():
+                if strip['fr_range'][0] <= fraction <= strip['fr_range'][1]:
+                    return strip
     return False
 
 
@@ -86,12 +93,13 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
                 pred_pi, delta_pi = 'NA', 'NA'
             else:
                 predicted_count += 1
-            strip = get_strip(strips, line[stripcol])
+            fraction = int(line[frac_col]) 
+            strip = get_strip(strips, line[stripcol], fraction)
             if not strip:
                 exp_pi, delta_pi = 'NA', 'NA'
             else:
                 try:
-                    exp_pi = (strip['fr_width'] * int(line[frac_col]) +
+                    exp_pi = (strip['fr_width'] * fraction +
                               strip['intercept'])
                 except ValueError:
                     print('Cannot detect fraction for PSM {}'.format(sequence))
@@ -117,6 +125,7 @@ def parse_commandline():
                         'pI shift.')
     parser.add_argument('-i', dest='pipeps', help='A tab-separated txt file '
                         'with peptide seq, pI value')
+    parser.add_argument('--stripdef', dest='stripdef', help='JSON strip information')
     parser.add_argument('--pepcolpattern', dest='pepcolpattern',
                         help='Peptide sequence column pattern in peptide '
                         'table.', default=False, type=str)
