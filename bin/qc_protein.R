@@ -118,6 +118,7 @@ if (file.exists(sampletable)) {
   sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
   colnames(sampletable) = c('ch', 'set', 'sample', 'group')
   lookup = sampletable$set
+  rownames(sampletable) = apply(sampletable[c('group', 'sample', 'set', 'ch')], 1, paste, collapse='_')
   names(lookup) = apply(sampletable[c('group', 'sample', 'set', 'ch')], 1, paste, collapse='_')
   names(lookup) = gsub('[^a-zA-Z0-9_-]', '_', names(lookup))
 }
@@ -254,4 +255,33 @@ if (length(deqpval_cols)) {
       dev.off()
     }
   }
+}
+
+
+# PCA
+if (length(deqpval_cols)) {
+  pca_ana <- prcomp(t(na.omit(feats[,tmtcols])), scale. = TRUE)
+  score.df <- as.data.frame(pca_ana$x)
+  rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
+  score.df$type = sampletable[rownames(score.df), "group"]
+
+  #Scree plot
+  contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
+  contributions$pc = rownames(contributions)
+  png('scree')
+  print(ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
+    geom_bar(stat='identity') +
+    theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=15)) +
+    ylab("Contribution (%)"))
+  dev.off()
+  png('pca')
+  print(ggplot(data=score.df, aes(x =PC1, y =PC2, label=rownames(score.df), colour=type)) +
+    geom_hline(yintercept = 0, colour = "gray65") +
+    geom_vline(xintercept = 0, colour = "gray65") +
+    geom_point(size=4) +
+    theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=20),
+		       legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+    xlab(sprintf("PC1 (%s%%)", contributions$contrib[1])) + ylab(sprintf("PC2 (%s%%)", contributions$contrib[2]))
+    )
+  dev.off()
 }

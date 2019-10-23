@@ -1009,13 +1009,19 @@ process featQC {
     do
     [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
     done 
-  # Fetch special (3-pane) DEqMS plots, use ls to check because wildcard doesnt work in -e
+  # Fetch special (multi-pane) DEqMS and PCA plots
+  # Use ls to check because wildcard doesnt work in -e
   ls deqms_volcano_* && echo '<div class="chunk" id="deqms">' >> featqc.html
   for graph in deqms_volcano_*;
     do
     paste -d \\\\0  <(echo '<div><img src="data:image/png;base64,') <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
     done
   ls deqms_volcano_* && echo '</div>' >> featqc.html
+  [ -e pca ] && echo '<div class="chunk" id="pca">' >> featqc.html && for graph in pca scree;
+    do 
+    paste -d \\\\0  <(echo '<div><img src="data:image/png;base64,') <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
+    done
+    [ -e pca ] && echo '</div>' >> featqc.html
 
   echo "</body></html>" >> featqc.html
   ${acctype == 'peptides' ? 'touch summary.txt' : ''}

@@ -49,7 +49,7 @@
 
 
 {% for graphtype in ["featyield", "precursorarea", "isobaric", "nrpsms", "nrpsmsoverlapping", 
-                     "percentage_onepsm", "ms1nrpeps", "deqms"] %}
+                     "percentage_onepsm", "ms1nrpeps", "deqms", "pca"] %}
   {% if graphtype in features['peptides'] or ('proteins' in features and graphtype in features['proteins']) %}
   <h4 class="title is-4">{{ titles[graphtype] }}</h4>
   <div class="columns">
