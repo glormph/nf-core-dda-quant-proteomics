@@ -34,12 +34,13 @@ def main():
         raise RuntimeError('Must define peptide sequence column')
     with open(args.stripdef) as fp:
         strips = json.load(fp)
-    for strip in strips.values():
+    for stripname, strip in strips.items():
         if 'intercept' in strip:
             strip = {'1-{}'.format(strip['fr_amount']): strip}
+            strips[stripname] = strip
         for striprange, stripdata in strip.items():
             frrange = striprange.split('-') 
-            stripdata['fr_range'] =  (int(frrange[0]), int(frrange[1])) 
+            stripdata['fr_range'] = (int(frrange[0]), int(frrange[1]))
     with open(args.outpeptable, 'w') as fp:
         for outline in annotate_peptable(args.pipeps, args.peptable, pepcol,
                                          frac_col, stripcol, strips,
