@@ -1,4 +1,4 @@
-# nf-core/ddamsproteomics: Configuration for other clusters
+# glormph/nf-core-dda-quant-proteomics: Configuration for other clusters
 
 It is entirely possible to run this pipeline on other clusters, though you will need to set up your own config file so that the pipeline knows how to work with your cluster.
 
@@ -37,16 +37,14 @@ Please see the [`installation documentation`](../installation.md) for how to run
 ### Docker
 Docker is a great way to run nf-core/ddamsproteomics, as it manages all software installations and allows the pipeline to be run in an identical software environment across a range of systems.
 
-Nextflow has [excellent integration](https://www.nextflow.io/docs/latest/docker.html) with Docker, and beyond installing the two tools, not much else is required - nextflow will automatically fetch the [nfcore/ddamsproteomics](https://hub.docker.com/r/nfcore/ddamsproteomics/) image that we have created and is hosted at dockerhub at run time.
+Nextflow has [excellent integration](https://www.nextflow.io/docs/latest/docker.html) with Docker, and beyond installing the two tools, not much else is required - nextflow will automatically fetch the [glormph/lehtio-quant-proteomics](https://hub.docker.com/r/glormph/lehtio-quant-proteomics/) image that we have created and is hosted at dockerhub at run time.
 
 To add docker support to your own config file, add the following:
 
 ```nextflow
 docker.enabled = true
-process.container = "nfcore/ddamsproteomics"
+process.container = "glormph/lehtio-quant-proteomics"
 ```
-
-Note that the dockerhub organisation name annoyingly can't have a hyphen, so is `nfcore` and not `nf-core`.
 
 
 ### Singularity image
@@ -57,7 +55,6 @@ To specify singularity usage in your pipeline config file, add the following:
 
 ```nextflow
 singularity.enabled = true
-process.container = "shub://nf-core/ddamsproteomics"
 ```
 
 If you intend to run the pipeline offline, nextflow will not be able to automatically download the singularity image for you.
@@ -66,7 +63,7 @@ Instead, you'll have to do this yourself manually first, transfer the image file
 First, pull the image file where you have an internet connection:
 
 ```bash
-singularity pull --name nf-core-ddamsproteomics.simg shub://nf-core/ddamsproteomics
+singularity pull --name nf-core-ddamsproteomics.simg docker://glormph/lehtio-quant-proteomics
 ```
 
 Then transfer this file and point the config file to the image:
