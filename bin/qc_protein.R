@@ -249,7 +249,8 @@ if (length(deqpval_cols)) {
         geom_hline(yintercept = 3, colour = "red") + # Add significance cutoffs
         geom_vline(xintercept = 0, colour = "black") # Add 0 lines
       if (feattype != 'peptides') {
-        plot = plot + geom_text_repel(data=subset(feats, abs(get(logfcname)) > 1 & get(logpname) > 3))
+	topfeats = feats[order(feats[logpname], decreasing=TRUE)[1:10], ]
+        plot = plot + geom_text_repel(data=topfeats)
       }
       print(plot)
       dev.off()
