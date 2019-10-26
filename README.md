@@ -1,8 +1,8 @@
 # nf-core/ddamsproteomics
 **Quantitative shotgun MS proteomics as done in Lehtio lab**
 
-[![Build Status](https://travis-ci.org/nf-core/ddamsproteomics.svg?branch=master)](https://travis-ci.org/nf-core/ddamsproteomics)
-[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A50.32.0-brightgreen.svg)](https://www.nextflow.io/)
+[![Build Status](https://travis-ci.org/glormph/nf-core-dda-quant-proteomics.svg?branch=master)](https://travis-ci.org/glormph/nf-core-dda-quant-proteomics)
+[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A519.04.1-brightgreen.svg)](https://www.nextflow.io/)
 
 [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/)
 [![Docker](https://img.shields.io/docker/automated/glormph/lehtio-quant-proteomics.svg)](https://hub.docker.com/r/glormph/lehtio-quant-proteomics)

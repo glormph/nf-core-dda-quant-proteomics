@@ -296,7 +296,7 @@ process get_software_versions {
     """
 }
 
-if (workflow.profile.tokenize(',').contains('test')) {
+if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) { 
   // Profile 'test' delivers mzmlPaths
   Channel
     .from(params.mzmlPaths)
