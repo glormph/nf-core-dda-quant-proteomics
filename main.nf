@@ -38,6 +38,7 @@ def helpMessage() {
       --enzyme                      Enzyme used, default trypsin, pick from:
                                     unspecific, trypsin, chymotrypsin, lysc, lysn, gluc, argc, aspn, no_enzyme
       --terminicleaved              Allow only 'full', 'semi' or 'non' cleaved peptides
+      --maxmiscleav		    Maximum allowed amount of missed cleavages for MSGF+
       --minpeplen                   Minimum peptide length to search
       --maxpeplen                   Maximum peptide length to search
       --mincharge                   Minimum peptide charge search
@@ -102,6 +103,7 @@ params.iso_err = '-1,2'
 params.frag = 'auto'
 params.enzyme = 'trypsin'
 params.terminicleaved = 'full' // semi, non
+params.maxmiscleav = -1 // Default MSGF is no limit
 params.minpeplen = 7
 params.maxpeplen = 50
 params.mincharge = 2
@@ -210,6 +212,7 @@ summary['Isotope error'] = params.iso_err
 summary['Fragmentation method'] = params.frag
 summary['Enzyme'] = params.enzyme
 summary['Allowed peptide termini cleavage'] = params.terminicleaved
+summary['Allowed amount of missed cleavages'] = params.maxmiscleav
 summary['Minimum peptide length'] = params.minpeplen
 summary['Maximum peptide length'] = params.maxpeplen
 summary['Minimum peptide charge'] = params.mincharge
@@ -571,7 +574,7 @@ process msgfPlus {
   ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
 
   """
-  msgf_plus -Xmx16G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * 3} -mod $mods -tda 0 -t ${params.prectol} -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * 3} -mod $mods -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.mzid.tsv
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   """
