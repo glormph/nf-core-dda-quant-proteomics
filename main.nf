@@ -540,12 +540,12 @@ process createTargetDecoyFasta {
 
   output:
   file('db.fa') into concatdb
-  set file(tdb), file("decoy_${tdb}") into searchdbs 
+  set file(tdb), file("decoy.fa") into searchdbs 
 
   script:
   """
-  tryprev.py $tdb
-  cat $tdb decoy_${tdb} > db.fa
+  msslookup makedecoy -i "$tdb" -o decoy.fa --scramble tryp_rev --minlen $params.minpeplen
+  cat "$tdb" decoy.fa > db.fa
   """
 }
 
