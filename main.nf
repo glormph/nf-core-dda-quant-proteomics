@@ -383,7 +383,7 @@ mzmlfiles
 mzmlfiles_counter
   .count()
   .subscribe { println "$it mzML files in analysis" }
-  .set { mzmlcount_psm; mzmlcount_percolator }
+  .into { mzmlcount_psm; mzmlcount_percolator }
 
 process createSpectraLookup {
 
