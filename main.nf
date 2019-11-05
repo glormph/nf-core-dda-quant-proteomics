@@ -383,7 +383,7 @@ mzmlfiles
 mzmlfiles_counter
   .count()
   .subscribe { println "$it mzML files in analysis" }
-  .set { mzmlcount_psm }
+  .set { mzmlcount_psm; mzmlcount_percolator }
 
 process createSpectraLookup {
 
@@ -590,6 +590,7 @@ process percolator {
 
   input:
   set val(setname), val(samples), file('mzid?') from mzids_2pin
+  val(mzmlcount) from mzmlcount_percolator
 
   output:
   set val(setname), file('perco.xml') into percolated
