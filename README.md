@@ -3,6 +3,7 @@
 
 [![Build Status](https://travis-ci.org/lehtiolab/ddamsproteomics.svg?branch=master)](https://travis-ci.org/lehtiolab/ddamsproteomics)
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A519.04.1-brightgreen.svg)](https://www.nextflow.io/)
+[![DOI](https://zenodo.org/badge/219955514.svg)](https://zenodo.org/badge/latestdoi/219955514)
 
 [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/)
 [![Docker](https://img.shields.io/docker/automated/lehtiolab/ddamsproteomics.svg)](https://hub.docker.com/r/lehtiolab/ddamsproteomics)
