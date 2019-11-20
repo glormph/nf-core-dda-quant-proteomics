@@ -6,6 +6,7 @@
 - Added MSGF maxMissedCleavages parameter
 - Moved release repo to lehtiolab/ddamsproteomics
 - Removed decoy/trypsinization script to use msstitch tool instead
+- QC bugfix: dont crash when there are no peptides with 1missed cleavage
 
 ## Version 1.1
 
