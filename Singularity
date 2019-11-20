@@ -2,11 +2,11 @@ From:nfcore/base
 Bootstrap:docker
 
 %labels
-    DESCRIPTION Singularity image containing all requirements for the nf-core/ddamsproteomics pipeline
-    VERSION 1.1
+    DESCRIPTION Singularity image containing all requirements for the lehtiolab/ddamsproteomics pipeline
+    VERSION 1.2
 
 %environment
-    PATH=/opt/conda/envs/nf-core-ddamsproteomics-1.1/bin:$PATH
+    PATH=/opt/conda/envs/ddamsproteomics-1.2/bin:$PATH
     export PATH
 
 %files
