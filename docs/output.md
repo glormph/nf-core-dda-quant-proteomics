@@ -1,6 +1,15 @@
-# nf-core/ddamsproteomics: Output
+# lehtiolab/ddamsproteomics: Output
 
 This document describes the output produced by the pipeline. 
+
+## Output
+The output is a number of text, SQLite and HTML files. Depending somewhat on inputs, the following can be obtained from the output directory:
+
+* target/decoy PSM tables (TSV files)
+* a peptide table (TSV)
+* protein and genes tables (TSV)
+* quant and PSM SQLite lookup tables
+* a QC report (HTML)
 
 
 ## Pipeline overview

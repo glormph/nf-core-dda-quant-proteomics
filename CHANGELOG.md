@@ -1,4 +1,11 @@
-# nf-core/ddamsproteomics: Changelog
+# lehtiolab/ddamsproteomics: Changelog
+
+
+## Version 1.2 [2019-11-20]
+- Updated to MSGF version 2019.07.03
+- Added MSGF maxMissedCleavages parameter
+- Moved release repo to lehtiolab/ddamsproteomics
+- Removed decoy/trypsinization script to use msstitch tool instead
 
 ## Version 1.1
 
