@@ -108,6 +108,8 @@ params.minpeplen = 7
 params.maxpeplen = 50
 params.mincharge = 2
 params.maxcharge = 6
+params.psmconflvl = 0.01
+params.pepconflvl = 0.01
 params.fdrmethod = 'tdconcat'
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
@@ -662,8 +664,8 @@ process createPSMTable {
   outpsms = "${td}_psmtable.txt"
   """
   msspsmtable merge -i psms* -o psms.txt
-  msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'PSM q-value'
-  msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl 0.01 --confcolpattern 'peptide q-value'
+  msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl $params.psmconflvl --confcolpattern 'PSM q-value'
+  msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl $params.pepconflvl --confcolpattern 'peptide q-value'
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
