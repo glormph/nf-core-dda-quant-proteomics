@@ -671,7 +671,7 @@ process createPSMTable {
   cat lookup > $psmlookup
   msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
   msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt
-  ${!params.noquant ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric && td=='target' ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
+  ${!params.noquant && td == 'target' ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
   sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
   ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
   ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile $psmlookup" : ''}
@@ -709,10 +709,10 @@ process psm2Peptides {
 
   script:
   col = accolmap.peptides + 1  // psm2pep adds a column
-  isoquant = rawisoquant && td == 'target'
+  do_raw_isoquant = rawisoquant && td == 'target'
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
-  msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant ? "--ms1quantcolpattern area" : ""}
+  msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant && td == 'target' ? "--ms1quantcolpattern area" : ""}
   # Move peptide sequence to first column
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
   # Create empty protein/gene/gene-symbol tables with only the identified accessions, will be filled later
