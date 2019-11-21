@@ -656,7 +656,7 @@ process createPSMTable {
 
   output:
   set val(td), file("${outpsms}") into psm_result
-  set val(td), file({setnames.collect() { it + '.tsv' }}) into setpsmtables
+  set val(td), file({setnames.collect() { it + '.tsv' }}) optional true into setpsmtables
   set val(td), file("${psmlookup}") into psmlookup
 
   script:
@@ -666,6 +666,7 @@ process createPSMTable {
   msspsmtable merge -i psms* -o psms.txt
   msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl $params.psmconflvl --confcolpattern 'PSM q-value'
   msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl $params.pepconflvl --confcolpattern 'peptide q-value'
+  tail -n+2 filtpep | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
@@ -770,15 +771,30 @@ process prepProteinGeneSymbolTable {
   set val(setname), val(acctype), val(td), file('bestpeptides') into bestpep
 
   script:
+  scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
   if (td == 'target')
   """
   ${!params.noquant ? "mssprottable ms1quant -i proteins -o protms1 --psmtable psms --protcol ${accolmap[acctype]}" : 'mv proteins protms1'}
   ${rawisoquant ? "msspsmtable isoratio -i psms -o proteintable --protcol ${accolmap[acctype]} --targettable protms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}": 'mv protms1 proteintable'}
-  mssprottable bestpeptide -i proteintable -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
+
+  scol=\$(head -1 peplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  if [ -n "\$(cut -f \$scol peplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
+    then scpat="${scorecolpat}"
+    else scpat="svm"
+  fi
+  echo Using "\$scpat" score to get best peptides
+    
+  mssprottable bestpeptide -i proteintable -o bestpeptides --peptable peplinmod --scorecolpattern "\$scpat" --logscore --protcol ${accolmap[acctype] + 1}
   """
   else
   """
-  mssprottable bestpeptide -i proteins -o bestpeptides --peptable peplinmod --scorecolpattern ${acctype == 'proteins' ? '\'^q-value\'' : '\'linear model\''} --logscore --protcol ${accolmap[acctype] + 1}
+  scol=\$(head -1 peplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  if [ -n "\$(cut -f \$scol peplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
+    then scpat="${scorecolpat}"
+    else scpat="svm"
+  fi
+  echo Using "\$scpat" score to get best peptides
+  mssprottable bestpeptide -i proteins -o bestpeptides --peptable peplinmod --scorecolpattern "\$scpat" --logscore --protcol ${accolmap[acctype] + 1}
   """
 }
 
@@ -787,6 +803,7 @@ tbestpep = Channel.create()
 dbestpep = Channel.create()
 bestpep
   .groupTuple(by: [0,1])
+  .filter { it -> it[2].size() == 2 }
   .transpose()
   .choice(tbestpep, dbestpep) { it[2] == 'target' ? 0 : 1 }
 
