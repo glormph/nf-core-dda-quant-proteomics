@@ -4,16 +4,22 @@ library(ggplot2)
 library(forcats)
 library(reshape2)
 library(ggrepel)
-args = commandArgs(trailingOnly=TRUE)
-nrsets = as.numeric(args[1])
-feattype = args[2]
-peptable = args[3]
-sampletable = args[4]
-make_normtable = FALSE
-if(length(args) == 5) {
- make_normtable = TRUE
- normtable = args[5]
-}
+library(argparse)
+
+parser <- ArgumentParser()
+parser$add_argument('--sets', dest='sets', type='character', nargs='+')
+parser$add_argument('--feattype', type='character')
+parser$add_argument('--peptable', type='character')
+parser$add_argument('--sampletable', type='character', default=FALSE)
+parser$add_argument('--normtable', type='character')
+opt = parser$parse_args()
+
+#args = commandArgs(trailingOnly=TRUE)
+nrsets = length(opt$sets)
+setnames = opt$sets
+feattype = opt$feattype
+peptable = opt$peptable
+sampletable = opt$sampletable
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
 featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.ID', assoc='Gene.Name')[[feattype]]
@@ -113,7 +119,7 @@ if (feattype == 'proteins') {
 #isobaric
 # first get a fullsamplename to set lookup, if we have a sampletable
 use_sampletable = FALSE
-if (file.exists(sampletable)) {
+if (sampletable) {
   use_sampletable = TRUE
   sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
   colnames(sampletable) = c('ch', 'set', 'sample', 'group')

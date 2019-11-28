@@ -12,6 +12,7 @@ dependencies:
   - bioconda::percolator=3.1
   - conda-forge::lxml=4.2.5
   - conda-forge::jinja2=2.10
+  - conda-forge::r-argparse=2.0.1
   - conda-forge::r-ggplot2=3.0.0
   - conda-forge::r-ggrepel=0.8.1
   - conda-forge::r-reshape2=1.4.3

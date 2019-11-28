@@ -1026,7 +1026,7 @@ process featQC {
   outname = (acctype == 'assoc') ? 'symbols' : acctype
   """
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
-  qc_protein.R ${setnames.size()} ${acctype} $peptable ${params.sampletable ? "$sampletable" : "FALSE"}
+  qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} --feattype ${acctype} --peptable $peptable ${params.sampletable ? "--sampletable $sampletable" : ''}
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
