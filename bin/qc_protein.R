@@ -68,6 +68,11 @@ if (feattype == 'peptides') {
   am_prots = aggregate(Peptide.sequence ~ Set, am_prots, length)
   am_prots = merge(am_prots, unipepprotnr)
   names(am_prots) = c('Set', 'All', 'Non-shared (unique)')
+  missing = setdiff(setnames, am_prots$Set)
+  missingvals = vector(mode='integer', length=length(missing))
+  missing_df = data.frame(Set=missing, All=missingvals, nonshared=missingvals)
+  names(missing_df) = c('Set', 'All', 'Non-shared (unique)')
+  am_prots = rbind(am_prots, missing_df)
   write.table(am_prots[,c(1,3)], 'summary.txt', row.names=F, quote=F, sep='\t')
   am_prots = melt(am_prots)
   colnames(am_prots)[3] = 'accession'
@@ -78,6 +83,12 @@ if (feattype == 'peptides') {
     geom_text(data=subset(am_prots, variable=='Non-shared (unique)'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=+0.25) + 
 	ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique)))
 } else {
+  am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
+  colnames(am_prots)[2] = 'accession'
+  missing = setdiff(setnames, am_prots$Set)
+  missingvals = vector(mode='integer', length=length(missing))
+  missing_df = data.frame(Set=missing, accession=missingvals)
+  am_prots = rbind(am_prots, missing_df)
   if (length(grep('plex', names(feats)))) {
     # if isobaric, then show summary table of feats 1%FDR AND quant
     tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
@@ -89,16 +100,14 @@ if (feattype == 'peptides') {
     sum_prots = aggregate(get(featcol) ~ Set, sum_prots, length)
     summary = merge(pepmed, sum_prots, by='Set', all.y=T)
     colnames(summary)[ncol(summary)] = paste('nr_', feattype, '_q', sep='')
+    summary = merge(summary, summary_psms, by='Set', all.y=T)
   } else {
     # just nr of proteins 1% FDR, no quant
     summary = merge(pepmed, am_prots, by='Set', all.y=T)
     colnames(summary)[ncol(summary)] = paste('nr_', feattype, sep='')
   }
-  summary = merge(summary, summary_psms, by='Set', all.y=T)
   summary[is.na(summary)] = 0
   write.table(summary, 'summary.txt', row.names=F, quote=F, sep='\t')
-  am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
-  colnames(am_prots)[2] = 'accession'
   print(ggplot(am_prots) +
     coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), plot.title=element_text(size=20)) +
     geom_bar(aes(fct_rev(Set), y=accession), stat='identity') +
