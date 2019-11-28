@@ -765,72 +765,51 @@ if (params.genes && params.symbols) {
 * Step 4: Infer and quantify proteins and genes
 */
 
-process prepProteinGeneSymbolTable {
 
-  when: !params.onlypeptides
-
-  input:
-  set val(setname), val(td), file('psms'), file('proteins'), val(acctype), file('peplinmod') from prepgs_in
-
-  output:
-  set val(setname), val(acctype), val(td), file('bestpeptides') into bestpep
-
-  script:
-  scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
-  if (td == 'target')
-  """
-  ${!params.noquant ? "mssprottable ms1quant -i proteins -o protms1 --psmtable psms --protcol ${accolmap[acctype]}" : 'mv proteins protms1'}
-  ${rawisoquant ? "msspsmtable isoratio -i psms -o proteintable --protcol ${accolmap[acctype]} --targettable protms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}": 'mv protms1 proteintable'}
-
-  scol=\$(head -1 peplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
-  if [ -n "\$(cut -f \$scol peplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
-    then scpat="${scorecolpat}"
-    else scpat="svm"
-  fi
-  echo Using "\$scpat" score to get best peptides
-    
-  mssprottable bestpeptide -i proteintable -o bestpeptides --peptable peplinmod --scorecolpattern "\$scpat" --logscore --protcol ${accolmap[acctype] + 1}
-  """
-  else
-  """
-  scol=\$(head -1 peplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
-  if [ -n "\$(cut -f \$scol peplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
-    then scpat="${scorecolpat}"
-    else scpat="svm"
-  fi
-  echo Using "\$scpat" score to get best peptides
-  mssprottable bestpeptide -i proteins -o bestpeptides --peptable peplinmod --scorecolpattern "\$scpat" --logscore --protcol ${accolmap[acctype] + 1}
-  """
-}
-
-
-tbestpep = Channel.create()
-dbestpep = Channel.create()
-bestpep
-  .groupTuple(by: [0,1])
-  .filter { it -> it[2].size() == 2 }
+// Group set/acctype T-D combinations and remove those with only target or only decoy
+tprepgs_in = Channel.create()
+dprepgs_in = Channel.create()
+prepgs_in
+  .groupTuple(by: [0,4])
+  .filter { it -> it[1].size() == 2 }
   .transpose()
-  .choice(tbestpep, dbestpep) { it[2] == 'target' ? 0 : 1 }
+  .choice(tprepgs_in, dprepgs_in) { it[1] == 'target' ? 0 : 1 }
 
 
-process proteinFDR {
+process proteinGeneSymbolTableFDR {
   
   when: !params.onlypeptides
+
   input:
-  set val(setname), val(acctype), val(td), file('tbestpep') from tbestpep
-  set val(setname), val(acctype), val(td), file('dbestpep') from dbestpep
+  set val(setname), val(td), file('tpsms'), file('tproteins'), val(acctype), file('tpeplinmod') from tprepgs_in
+  set val(setname), val(td), file('dpsms'), file('dproteins'), val(acctype), file('dpeplinmod') from dprepgs_in
   set file(tfasta), file(dfasta) from searchdbs
 
   output:
   set val(setname), val(acctype), file("${setname}_protfdr") into protfdrout
   script:
-  if (acctype == 'genes')
+  scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
   """
-  mssprottable pickedfdr --picktype fasta --targetfasta "$tfasta" --decoyfasta "$dfasta" ${params.fastadelim ? "--fastadelim \'${params.fastadelim}\' --genefield ${params.genefield}" : ''} -i tbestpep --decoyfn dbestpep -o ${setname}_protfdr
-  """
-  else
-  """
-  mssprottable ${acctype == 'proteins' ? 'protfdr' : 'pickedfdr --picktype result'} -i tbestpep --decoyfn dbestpep -o ${setname}_protfdr
+  ${!params.noquant ? "mssprottable ms1quant -i tproteins -o tprotms1 --psmtable tpsms --protcol ${accolmap[acctype]}" : 'mv tproteins tprotms1'}
+  ${rawisoquant ? "msspsmtable isoratio -i tpsms -o tprotquant --protcol ${accolmap[acctype]} --targettable tprotms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}": 'mv tprotms1 tprotquant'}
+
+  # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
+  tscol=\$(head -1 tpeplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  dscol=\$(head -1 dpeplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  if [ -n "\$(cut -f \$tscol tpeplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ] && [ -n "\$(cut -f \$dscol dpeplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
+    then
+      scpat="${scorecolpat}"
+      logflag="--logscore"
+    else
+      scpat="svm"
+      logflag=""
+      echo 'WARNING: Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead.' >> warnings
+  fi
+
+  mssprottable bestpeptide -i tprotquant -o tbestpeptides --peptable tpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
+  mssprottable bestpeptide -i dproteins -o dbestpeptides --peptable dpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
+
+  mssprottable ${acctype == 'proteins' ? 'protfdr' : 'pickedfdr'} -i tbestpeptides --decoyfn dbestpeptides -o ${setname}_protfdr ${acctype == 'genes' ? "--picktype fasta --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'" : '' }" : ''} ${acctype == 'symbols' ? 'pickedfdr --picktype result' : ''}
   """
 }
 
