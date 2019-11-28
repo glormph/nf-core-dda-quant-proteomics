@@ -565,7 +565,7 @@ process msgfPlus {
 
   output:
   set val(setname), val(sample), file("${sample}.mzid") into mzids
-  set val(setname), file("${sample}.mzid"), file('out.mzid.tsv'), val(platename), val(fraction) into mzidtsvs
+  set val(setname), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzidtsvs
   
   script:
   msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
@@ -577,7 +577,9 @@ process msgfPlus {
 
   """
   msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * 3} -mod $mods -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
-  msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.mzid.tsv
+  msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
+  awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
+  awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   """
 }
@@ -614,19 +616,22 @@ mzidtsvs
   .set { mzperco }
 
 
-process svmToTSV {
+process fdrToTSV {
 
   input:
-  set val(setname), file('mzident????'), file('mzidtsv????'), val(platenames), val(fractions), file(perco) from mzperco 
+  set val(setname), file(mzids), file(tsvs), file(perco) from mzperco
 
   output:
-  set val(setname), val('target'), file('tmzidperco') into tmzidtsv_perco
-  set val(setname), val('decoy'), file('dmzidperco') into dmzidtsv_perco
+  set val(setname), val('target'), file('target.tsv') into tmzidtsv_perco
+  set val(setname), val('decoy'), file('decoy.tsv') into dmzidtsv_perco
 
   script:
   if (params.fdrmethod == 'tdconcat')
   """
-  perco_to_tsv.py -p $perco --plates ${platenames.join(' ')} --fractions ${fractions.join(' ')}
+  mkdir outtables
+  msspsmtable percolator --perco $perco -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')}
+  msspsmtable merge -i outtables/* -o psms
+  msspsmtable split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   """
 }
 
@@ -670,7 +675,7 @@ process createPSMTable {
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
-  msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt
+  msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt --addmiscleav
   ${!params.noquant && td == 'target' ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
   sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
   ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
