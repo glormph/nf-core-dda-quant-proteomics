@@ -549,7 +549,7 @@ process createTargetDecoyFasta {
 
   script:
   """
-  msslookup makedecoy -i "$tdb" -o decoy.fa --scramble tryp_rev --minlen $params.minpeplen
+  msslookup makedecoy -i "$tdb" -o decoy.fa --scramble tryp_rev --ignore-target-hits
   cat "$tdb" decoy.fa > db.fa
   """
 }
@@ -601,11 +601,10 @@ process percolator {
 
   script:
   """
-  echo $samples
   mkdir mzids
   count=1;for sam in ${samples.join(' ')}; do ln -s `pwd`/mzid\$count mzids/\${sam}.mzid; echo mzids/\${sam}.mzid >> metafile; ((count++));done
-  msgf2pin -o percoin.xml -e ${params.enzyme} -P "decoy_" metafile
-  percolator -j percoin.xml -X perco.xml -N 500000 --decoy-xml-output -y
+  msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
+  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
   """
 }
 
@@ -725,8 +724,8 @@ process psm2Peptides {
   ${!params.onlypeptides ? "tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> proteins" : "" }
   ${params.genes ? "tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> genes" : ""}
   ${params.symbols ? "tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> symbols" : ""}
-  ${isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}
-  ${isoquant ? "mv pepisoquant peptide_table.txt" : ''}
+  ${do_raw_isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}
+  ${do_raw_isoquant ? "mv pepisoquant peptide_table.txt" : ''}
   # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
   """
